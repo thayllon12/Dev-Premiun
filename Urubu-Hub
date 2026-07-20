@@ -1,0 +1,554 @@
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+if not LocalPlayer then return end
+
+local sound = Instance.new("Sound")
+sound.SoundId = "rbxassetid://124691327896440"
+sound.Volume = 0.5
+sound.Parent = workspace
+sound:Play()
+
+sound.Ended:Connect(function()
+	sound:Destroy()
+end)
+
+local PlacedFolder = Workspace:WaitForChild("Placed", 5)
+local RemotesFolder = ReplicatedStorage:WaitForChild("Remotes", 5)
+local MilkingControl = RemotesFolder and RemotesFolder:WaitForChild("MilkingControl", 5)
+local NotifyEvent = RemotesFolder and RemotesFolder:FindFirstChild("Notify")
+local HeldItemRequest = RemotesFolder and RemotesFolder:FindFirstChild("HeldItemRequest")
+
+local autoFarmActive = false
+local autoFeedActive = false
+local isMilking = false
+local isFeeding = false
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "UrubuHubGUI"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 280, 0, 185)
+mainFrame.Position = UDim2.new(0.5, -140, 0.5, -92)
+mainFrame.BackgroundColor3 = Color3.fromRGB(24, 24, 28)
+mainFrame.BorderSizePixel = 0
+mainFrame.ClipsDescendants = true
+mainFrame.Parent = screenGui
+
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 10)
+mainCorner.Parent = mainFrame
+
+local bgImage = Instance.new("ImageLabel")
+bgImage.Name = "BackgroundImage"
+bgImage.Size = UDim2.new(1, 0, 1, 0)
+bgImage.Position = UDim2.new(0, 0, 0, 0)
+bgImage.BackgroundTransparency = 0
+bgImage.Image = "rbxassetid://10492709225"
+bgImage.ScaleType = Enum.ScaleType.Crop
+bgImage.ZIndex = 1
+bgImage.Parent = mainFrame
+
+local headerFrame = Instance.new("Frame")
+headerFrame.Name = "Header"
+headerFrame.Size = UDim2.new(1, 0, 0, 40)
+headerFrame.BackgroundColor3 = Color3.fromRGB(32, 32, 38)
+headerFrame.BackgroundTransparency = 0.3
+headerFrame.BorderSizePixel = 0
+headerFrame.ZIndex = 2
+headerFrame.Parent = mainFrame
+
+local leftLogo = Instance.new("ImageLabel")
+leftLogo.Name = "LeftLogo"
+leftLogo.Size = UDim2.new(0, 28, 0, 28)
+leftLogo.Position = UDim2.new(0, 8, 0.5, -14)
+leftLogo.BackgroundTransparency = 1
+leftLogo.Image = "rbxassetid://97094147136788"
+leftLogo.ZIndex = 3
+leftLogo.Parent = headerFrame
+
+local leftLogoCorner = Instance.new("UICorner")
+leftLogoCorner.CornerRadius = UDim.new(0, 6)
+leftLogoCorner.Parent = leftLogo
+
+local rightLogo = Instance.new("ImageLabel")
+rightLogo.Name = "RightLogo"
+rightLogo.Size = UDim2.new(0, 28, 0, 28)
+rightLogo.Position = UDim2.new(0, 178, 0.5, -14)
+rightLogo.BackgroundTransparency = 1
+rightLogo.Image = "rbxassetid://17521292976"
+rightLogo.ZIndex = 3
+rightLogo.Parent = headerFrame
+
+local rightLogoCorner = Instance.new("UICorner")
+rightLogoCorner.CornerRadius = UDim.new(0, 6)
+rightLogoCorner.Parent = rightLogo
+
+task.spawn(function()
+	local logoList = {
+		"rbxassetid://17521292976",
+		"rbxassetid://12609219824"
+	}
+	local currentIndex = 1
+
+	while true do
+		task.wait(5)
+		currentIndex = (currentIndex % #logoList) + 1
+		rightLogo.Image = logoList[currentIndex]
+	end
+end)
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Name = "Title"
+titleLabel.Size = UDim2.new(0, 130, 1, 0)
+titleLabel.Position = UDim2.new(0, 42, 0, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "Urubu Hub"
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.TextSize = 15
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+titleLabel.ZIndex = 3
+titleLabel.Parent = headerFrame
+
+local minimizeBtn = Instance.new("TextButton")
+minimizeBtn.Name = "MinimizeButton"
+minimizeBtn.Size = UDim2.new(0, 24, 0, 24)
+minimizeBtn.Position = UDim2.new(1, -54, 0, 8)
+minimizeBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+minimizeBtn.Text = "-"
+minimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+minimizeBtn.TextSize = 16
+minimizeBtn.Font = Enum.Font.GothamBold
+minimizeBtn.ZIndex = 3
+minimizeBtn.Parent = headerFrame
+
+local minCorner = Instance.new("UICorner")
+minCorner.CornerRadius = UDim.new(0, 6)
+minCorner.Parent = minimizeBtn
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Name = "CloseButton"
+closeBtn.Size = UDim2.new(0, 24, 0, 24)
+closeBtn.Position = UDim2.new(1, -28, 0, 8)
+closeBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+closeBtn.Text = "X"
+closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeBtn.TextSize = 12
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.ZIndex = 3
+closeBtn.Parent = headerFrame
+
+local closeCorner = Instance.new("UICorner")
+closeCorner.CornerRadius = UDim.new(0, 6)
+closeCorner.Parent = closeBtn
+
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Name = "StatusLabel"
+statusLabel.Size = UDim2.new(1, -24, 0, 20)
+statusLabel.Position = UDim2.new(0, 12, 0, 44)
+statusLabel.BackgroundTransparency = 1
+statusLabel.Text = "Status: OK"
+statusLabel.TextColor3 = Color3.fromRGB(0, 255, 150)
+statusLabel.TextSize = 11
+statusLabel.Font = Enum.Font.GothamBold
+statusLabel.TextXAlignment = Enum.TextXAlignment.Center
+statusLabel.ZIndex = 2
+statusLabel.Parent = mainFrame
+
+local autoFarmBtn = Instance.new("TextButton")
+autoFarmBtn.Name = "AutoFarmButton"
+autoFarmBtn.Size = UDim2.new(1, -24, 0, 42)
+autoFarmBtn.Position = UDim2.new(0, 12, 0, 70)
+autoFarmBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+autoFarmBtn.BackgroundTransparency = 0.3
+autoFarmBtn.Text = "Auto Farm: OFF"
+autoFarmBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+autoFarmBtn.TextSize = 13
+autoFarmBtn.Font = Enum.Font.GothamBold
+autoFarmBtn.ZIndex = 2
+autoFarmBtn.Parent = mainFrame
+
+local farmCorner = Instance.new("UICorner")
+farmCorner.CornerRadius = UDim.new(0, 8)
+farmCorner.Parent = autoFarmBtn
+
+local autoFeedBtn = Instance.new("TextButton")
+autoFeedBtn.Name = "AutoFeedButton"
+autoFeedBtn.Size = UDim2.new(1, -24, 0, 42)
+autoFeedBtn.Position = UDim2.new(0, 12, 0, 122)
+autoFeedBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+autoFeedBtn.BackgroundTransparency = 0.3
+autoFeedBtn.Text = "Auto Feed: OFF"
+autoFeedBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+autoFeedBtn.TextSize = 13
+autoFeedBtn.Font = Enum.Font.GothamBold
+autoFeedBtn.ZIndex = 2
+autoFeedBtn.Parent = mainFrame
+
+local feedCorner = Instance.new("UICorner")
+feedCorner.CornerRadius = UDim.new(0, 8)
+feedCorner.Parent = autoFeedBtn
+
+local function desativarAutoFeed(motivo)
+	autoFeedActive = false
+	autoFeedBtn.Text = "Auto Feed: OFF"
+	autoFeedBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+	autoFeedBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+	if motivo then
+		statusLabel.Text = "Status: " .. motivo
+		statusLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
+	end
+end
+
+local function tornarArrastavel(frame, handle)
+	handle = handle or frame
+	local dragging, dragInput, dragStart, startPos
+
+	handle.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = input.Position
+			startPos = frame.Position
+
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					dragging = false
+				end
+			end)
+		end
+	end)
+
+	handle.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+			dragInput = input
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if input == dragInput and dragging then
+			local delta = input.Position - dragStart
+			frame.Position = UDim2.new(
+				startPos.X.Scale,
+				startPos.X.Offset + delta.X,
+				startPos.Y.Scale,
+				startPos.Y.Offset + delta.Y
+			)
+		end
+	end)
+end
+
+tornarArrastavel(mainFrame, headerFrame)
+
+minimizeBtn.MouseButton1Click:Connect(function()
+	if mainFrame.Size.Y.Offset > 40 then
+		mainFrame:TweenSize(UDim2.new(0, 280, 0, 40), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.2, true)
+	else
+		mainFrame:TweenSize(UDim2.new(0, 280, 0, 185), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.2, true)
+	end
+end)
+
+closeBtn.MouseButton1Click:Connect(function()
+	autoFarmActive = false
+	autoFeedActive = false
+	screenGui:Destroy()
+end)
+
+local function atualizarHighlight()
+	local character = LocalPlayer.Character
+	if not character then return end
+
+	local existingHighlight = character:FindFirstChild("CowManagerHighlight")
+
+	if autoFarmActive then
+		if not existingHighlight then
+			local hl = Instance.new("Highlight")
+			hl.Name = "CowManagerHighlight"
+			hl.FillColor = Color3.fromRGB(0, 150, 255)
+			hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+			hl.FillTransparency = 0.5
+			hl.OutlineTransparency = 0
+			hl.Parent = character
+		end
+	else
+		if existingHighlight then
+			existingHighlight:Destroy()
+		end
+	end
+end
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+	task.wait(0.5)
+	atualizarHighlight()
+end)
+
+local function obterAtributosVaca(cowModel)
+	if not cowModel then return nil end
+	local ownerId = cowModel:GetAttribute("OwnerUserId") or (cowModel:FindFirstChild("Cow") and cowModel.Cow:GetAttribute("OwnerUserId"))
+	local storedLiters = cowModel:GetAttribute("StoredLiters") or (cowModel:FindFirstChild("Cow") and cowModel.Cow:GetAttribute("StoredLiters")) or 0
+	local hunger = cowModel:GetAttribute("Hunger") or (cowModel:FindFirstChild("Cow") and cowModel.Cow:GetAttribute("Hunger"))
+
+	if hunger == nil then
+		hunger = 0
+	end
+
+	return {
+		IsOwner = (ownerId == LocalPlayer.UserId),
+		StoredLiters = storedLiters,
+		Hunger = hunger
+	}
+end
+
+local function obterPosicaoVaca(cowModel)
+	if not cowModel or not cowModel.Parent then return nil end
+	if cowModel:IsA("Model") then
+		if cowModel.PrimaryPart then return cowModel.PrimaryPart.Position end
+		local ok, pivot = pcall(function() return cowModel:GetPivot() end)
+		if ok and pivot then return pivot.Position end
+	end
+	return nil
+end
+
+local function obterMilkPrompt(cowModel)
+	if not cowModel then return nil end
+	local inner = cowModel:FindFirstChild("Cow")
+	return (inner and inner:FindFirstChild("MilkPrompt")) or cowModel:FindFirstChild("MilkPrompt", true)
+end
+
+local function obterFeedPrompt(cowModel)
+	if not cowModel then return nil end
+	local inner = cowModel:FindFirstChild("Cow")
+	return (inner and inner:FindFirstChild("FeedPrompt")) or cowModel:FindFirstChild("FeedPrompt", true)
+end
+
+local function verificarEEquiparTrigo()
+	local char = LocalPlayer.Character
+	local temTrigo = false
+
+	if char then
+		for _, child in ipairs(char:GetChildren()) do
+			if child:IsA("Tool") and string.find(string.lower(child.Name), "wheat") then
+				temTrigo = true
+				break
+			end
+		end
+	end
+
+	if not temTrigo then
+		local backpack = LocalPlayer:FindFirstChild("Backpack")
+		if backpack then
+			for _, tool in ipairs(backpack:GetChildren()) do
+				if tool:IsA("Tool") and string.find(string.lower(tool.Name), "wheat") then
+					temTrigo = true
+					if char then
+						tool.Parent = char
+					end
+					break
+				end
+			end
+		end
+	end
+
+	if HeldItemRequest then
+		HeldItemRequest:FireServer("wheat")
+		task.wait(0.2)
+		char = LocalPlayer.Character
+		if char then
+			for _, child in ipairs(char:GetChildren()) do
+				if child:IsA("Tool") then
+					temTrigo = true
+					break
+				end
+			end
+		end
+	end
+
+	return temTrigo
+end
+
+local function teleportarPara(pos)
+	local char = LocalPlayer.Character
+	if char and char:FindFirstChild("HumanoidRootPart") then
+		char.HumanoidRootPart.CFrame = CFrame.new(pos + Vector3.new(0, 2.5, 0))
+	end
+end
+
+local function EsperarFimDaOrdenha()
+	local finalizado = false
+	local conexaoMilking, conexaoNotify
+
+	if MilkingControl then
+		conexaoMilking = MilkingControl.OnClientEvent:Connect(function(status)
+			if status == false then finalizado = true end
+		end)
+	end
+
+	if NotifyEvent then
+		conexaoNotify = NotifyEvent.OnClientEvent:Connect(function(title, message)
+			if message and string.find(message, "has no milk yet") then
+				finalizado = true
+			end
+		end)
+	end
+
+	local t = 0
+	while not finalizado and isMilking do
+		task.wait(0.2)
+		t = t + 0.2
+		if t > 12 then break end
+	end
+
+	if conexaoMilking then conexaoMilking:Disconnect() end
+	if conexaoNotify then conexaoNotify:Disconnect() end
+end
+
+local function ProcessarAlimentacao(cowModel)
+	local prompt = obterFeedPrompt(cowModel)
+	local pos = obterPosicaoVaca(cowModel)
+	if not prompt or not pos then return end
+
+	while isMilking do
+		task.wait(0.2)
+	end
+
+	isFeeding = true
+
+	if verificarEEquiparTrigo() then
+		statusLabel.Text = "Status: Alimentando..."
+		statusLabel.TextColor3 = Color3.fromRGB(0, 255, 150)
+
+		teleportarPara(pos)
+		task.wait(0.7)
+
+		for i = 1, 2 do
+			if fireproximityprompt then
+				fireproximityprompt(prompt)
+			else
+				prompt:InputHoldBegin()
+				task.wait(prompt.HoldDuration)
+				prompt:InputHoldEnd()
+			end
+			task.wait(0.3)
+		end
+	else
+		desativarAutoFeed("Sem Trigo no Inventário!")
+	end
+
+	isFeeding = false
+end
+
+local function ProcessarOrdenha(cowModel)
+	local prompt = obterMilkPrompt(cowModel)
+	local pos = obterPosicaoVaca(cowModel)
+	if not prompt or not pos then return end
+
+	while isMilking or isFeeding do
+		task.wait(0.2)
+	end
+
+	isMilking = true
+	statusLabel.Text = "Status: Ordenhando..."
+	statusLabel.TextColor3 = Color3.fromRGB(0, 150, 255)
+
+	teleportarPara(pos)
+	task.wait(0.7)
+
+	if fireproximityprompt then
+		fireproximityprompt(prompt)
+	else
+		prompt:InputHoldBegin()
+		task.wait(prompt.HoldDuration)
+		prompt:InputHoldEnd()
+	end
+
+	EsperarFimDaOrdenha()
+	isMilking = false
+
+	if not isFeeding then
+		statusLabel.Text = "Status: OK"
+		statusLabel.TextColor3 = Color3.fromRGB(0, 255, 150)
+	end
+end
+
+task.spawn(function()
+	while true do
+		task.wait(0.5)
+		if autoFeedActive and PlacedFolder then
+			for _, cowModel in ipairs(PlacedFolder:GetChildren()) do
+				if not autoFeedActive then break end
+
+				local attrs = obterAtributosVaca(cowModel)
+				if attrs and attrs.IsOwner and attrs.Hunger < 90 then
+					ProcessarAlimentacao(cowModel)
+				end
+			end
+		end
+	end
+end)
+
+task.spawn(function()
+	while true do
+		task.wait(0.5)
+		if autoFarmActive and not isFeeding and PlacedFolder then
+			for _, cowModel in ipairs(PlacedFolder:GetChildren()) do
+				if not autoFarmActive or isFeeding then break end
+
+				local attrs = obterAtributosVaca(cowModel)
+				if attrs and attrs.IsOwner and attrs.StoredLiters > 0 then
+					if not (autoFeedActive and attrs.Hunger < 90) then
+						ProcessarOrdenha(cowModel)
+					end
+				end
+			end
+		end
+	end
+end)
+
+autoFarmBtn.MouseButton1Click:Connect(function()
+	autoFarmActive = not autoFarmActive
+
+	if autoFarmActive then
+		autoFarmBtn.Text = "Auto Farm: ON"
+		autoFarmBtn.BackgroundColor3 = Color3.fromRGB(46, 125, 50)
+		autoFarmBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	else
+		autoFarmBtn.Text = "Auto Farm: OFF"
+		autoFarmBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+		autoFarmBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+	end
+
+	atualizarHighlight()
+end)
+
+autoFeedBtn.MouseButton1Click:Connect(function()
+	autoFeedActive = not autoFeedActive
+
+	if autoFeedActive then
+		statusLabel.Text = "Status: Checando Trigo..."
+		statusLabel.TextColor3 = Color3.fromRGB(255, 200, 0)
+
+		if not verificarEEquiparTrigo() then
+			desativarAutoFeed("Sem Trigo no Inventário!")
+			return
+		end
+
+		autoFeedBtn.Text = "Auto Feed: ON"
+		autoFeedBtn.BackgroundColor3 = Color3.fromRGB(46, 125, 50)
+		autoFeedBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+		statusLabel.Text = "Status: OK"
+		statusLabel.TextColor3 = Color3.fromRGB(0, 255, 150)
+	else
+		autoFeedBtn.Text = "Auto Feed: OFF"
+		autoFeedBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+		autoFeedBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+		statusLabel.Text = "Status: OK"
+		statusLabel.TextColor3 = Color3.fromRGB(0, 255, 150)
+	end
+end)
