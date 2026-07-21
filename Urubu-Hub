@@ -375,9 +375,11 @@ end)
 
 local function obterAtributosVaca(cowModel)
 	if not cowModel then return nil end
-	local ownerId = cowModel:GetAttribute("OwnerUserId") or (cowModel:FindFirstChild("Cow") and cowModel.Cow:GetAttribute("OwnerUserId"))
-	local storedLiters = cowModel:GetAttribute("StoredLiters") or (cowModel:FindFirstChild("Cow") and cowModel.Cow:GetAttribute("StoredLiters")) or 0
-	local hunger = cowModel:GetAttribute("Hunger") or (cowModel:FindFirstChild("Cow") and cowModel.Cow:GetAttribute("Hunger"))
+	local inner = cowModel:FindFirstChild("Cow")
+	local ownerId = cowModel:GetAttribute("OwnerUserId") or (inner and inner:GetAttribute("OwnerUserId"))
+	local storedLiters = cowModel:GetAttribute("StoredLiters") or (inner and inner:GetAttribute("StoredLiters")) or 0
+	local maxMilkLiters = cowModel:GetAttribute("MaxMilkLiters") or (inner and inner:GetAttribute("MaxMilkLiters")) or 100
+	local hunger = cowModel:GetAttribute("Hunger") or (inner and inner:GetAttribute("Hunger"))
 
 	if hunger == nil then
 		hunger = 100
@@ -386,6 +388,7 @@ local function obterAtributosVaca(cowModel)
 	return {
 		IsOwner = (ownerId == LocalPlayer.UserId),
 		StoredLiters = storedLiters,
+		MaxMilkLiters = maxMilkLiters,
 		Hunger = hunger
 	}
 end
@@ -601,10 +604,14 @@ task.spawn(function()
 
 			for _, cowModel in ipairs(PlacedFolder:GetChildren()) do
 				local attrs = obterAtributosVaca(cowModel)
-				if attrs and attrs.IsOwner and attrs.StoredLiters > maiorLitros then
-					if not (autoFeedActive and attrs.Hunger < 5) then
-						maiorLitros = attrs.StoredLiters
-						melhorVaca = cowModel
+				if attrs and attrs.IsOwner then
+					local estaCheia = (attrs.StoredLiters >= 100) or (attrs.StoredLiters >= attrs.MaxMilkLiters)
+
+					if estaCheia and attrs.StoredLiters > maiorLitros then
+						if not (autoFeedActive and attrs.Hunger < 5) then
+							maiorLitros = attrs.StoredLiters
+							melhorVaca = cowModel
+						end
 					end
 				end
 			end
