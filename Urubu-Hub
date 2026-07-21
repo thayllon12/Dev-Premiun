@@ -3,9 +3,17 @@ local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local VirtualUser = game:GetService("VirtualUser")
+local CoreGui = game:GetService("CoreGui")
+local Lighting = game:GetService("Lighting")
 
 local LocalPlayer = Players.LocalPlayer
 if not LocalPlayer then return end
+
+LocalPlayer.Idled:Connect(function()
+	VirtualUser:CaptureController()
+	VirtualUser:ClickButton2(Vector2.new())
+end)
 
 local sound = Instance.new("Sound")
 sound.SoundId = "rbxassetid://124691327896440"
@@ -32,6 +40,69 @@ local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "UrubuHubGUI"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local coreScreenGui = Instance.new("ScreenGui")
+coreScreenGui.Name = "UrubuHubAFKCore"
+coreScreenGui.IgnoreGuiInset = true
+coreScreenGui.ResetOnSpawn = false
+coreScreenGui.DisplayOrder = 999999999
+
+local afkOverlay = Instance.new("Frame")
+afkOverlay.Name = "AFKOverlay"
+afkOverlay.Size = UDim2.new(2, 0, 2, 0)
+afkOverlay.Position = UDim2.new(-0.5, 0, -0.5, 0)
+afkOverlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+afkOverlay.BorderSizePixel = 0
+afkOverlay.Visible = false
+afkOverlay.ZIndex = 2147483647
+afkOverlay.Parent = coreScreenGui
+
+local colorEffect = Instance.new("ColorCorrectionEffect")
+colorEffect.Name = "AFKBlackEffect"
+colorEffect.Brightness = -1
+colorEffect.Contrast = -1
+colorEffect.Enabled = false
+colorEffect.Parent = Lighting
+
+local pcallSuccess = pcall(function()
+	coreScreenGui.Parent = CoreGui
+end)
+
+if not pcallSuccess then
+	coreScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+end
+
+local function AtivarTelaPreta()
+	afkOverlay.Visible = true
+	colorEffect.Enabled = true
+end
+
+local function DesativarTelaPreta()
+	afkOverlay.Visible = false
+	colorEffect.Enabled = false
+end
+
+local lastClickTime = os.clock()
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		lastClickTime = os.clock()
+		if afkOverlay.Visible or colorEffect.Enabled then
+			DesativarTelaPreta()
+		end
+	end
+end)
+
+task.spawn(function()
+	while true do
+		task.wait(1)
+		if os.clock() - lastClickTime >= 60 then
+			if not afkOverlay.Visible then
+				AtivarTelaPreta()
+			end
+		end
+	end
+end)
 
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
@@ -94,7 +165,17 @@ rightLogoCorner.Parent = rightLogo
 task.spawn(function()
 	local logoList = {
 		"rbxassetid://17521292976",
-		"rbxassetid://12609219824"
+		"rbxassetid://12609219824",
+		"rbxassetid://12210665011",
+		"rbxassetid://137819974512446",
+		"rbxassetid://7183557588",
+		"rbxassetid://14391030285",
+		"rbxassetid://15476185315",
+		"rbxassetid://12537363972",
+		"rbxassetid://16226036263",
+		"rbxassetid://14655317724",
+		"rbxassetid://13550803879",
+		"rbxassetid://13981608860"
 	}
 	local currentIndex = 1
 
@@ -258,7 +339,10 @@ end)
 closeBtn.MouseButton1Click:Connect(function()
 	autoFarmActive = false
 	autoFeedActive = false
+	DesativarTelaPreta()
+	if colorEffect then colorEffect:Destroy() end
 	screenGui:Destroy()
+	coreScreenGui:Destroy()
 end)
 
 local function atualizarHighlight()
@@ -296,7 +380,7 @@ local function obterAtributosVaca(cowModel)
 	local hunger = cowModel:GetAttribute("Hunger") or (cowModel:FindFirstChild("Cow") and cowModel.Cow:GetAttribute("Hunger"))
 
 	if hunger == nil then
-		hunger = 0
+		hunger = 100
 	end
 
 	return {
@@ -329,10 +413,33 @@ local function obterFeedPrompt(cowModel)
 end
 
 local function verificarEEquiparTrigo()
-	local char = LocalPlayer.Character
+	local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
 	local temTrigo = false
 
-	if char then
+	if playerGui then
+		local invB = playerGui:FindFirstChild("InvB")
+		if invB then
+			local slotWheat = invB:FindFirstChild("Slot_wheat", true)
+			if slotWheat then
+				local textLbl = slotWheat:FindFirstChildOfClass("TextLabel") or slotWheat:FindFirstChild("Amount") or slotWheat:FindFirstChild("Count")
+				if textLbl then
+					local qtd = tonumber(string.match(textLbl.Text, "%d+"))
+					if qtd and qtd > 0 then
+						temTrigo = true
+					elseif not qtd and textLbl.Text ~= "" and textLbl.Text ~= "0" then
+						temTrigo = true
+					end
+				else
+					if slotWheat.Visible then
+						temTrigo = true
+					end
+				end
+			end
+		end
+	end
+
+	local char = LocalPlayer.Character
+	if not temTrigo and char then
 		for _, child in ipairs(char:GetChildren()) do
 			if child:IsA("Tool") and string.find(string.lower(child.Name), "wheat") then
 				temTrigo = true
@@ -356,18 +463,9 @@ local function verificarEEquiparTrigo()
 		end
 	end
 
-	if HeldItemRequest then
+	if temTrigo and HeldItemRequest then
 		HeldItemRequest:FireServer("wheat")
 		task.wait(0.2)
-		char = LocalPlayer.Character
-		if char then
-			for _, child in ipairs(char:GetChildren()) do
-				if child:IsA("Tool") then
-					temTrigo = true
-					break
-				end
-			end
-		end
 	end
 
 	return temTrigo
@@ -410,6 +508,9 @@ local function EsperarFimDaOrdenha()
 end
 
 local function ProcessarAlimentacao(cowModel)
+	local attrs = obterAtributosVaca(cowModel)
+	if not attrs or attrs.Hunger >= 5 then return end
+
 	local prompt = obterFeedPrompt(cowModel)
 	local pos = obterPosicaoVaca(cowModel)
 	if not prompt or not pos then return end
@@ -427,16 +528,14 @@ local function ProcessarAlimentacao(cowModel)
 		teleportarPara(pos)
 		task.wait(0.7)
 
-		for i = 1, 2 do
-			if fireproximityprompt then
-				fireproximityprompt(prompt)
-			else
-				prompt:InputHoldBegin()
-				task.wait(prompt.HoldDuration)
-				prompt:InputHoldEnd()
-			end
-			task.wait(0.3)
+		if fireproximityprompt then
+			fireproximityprompt(prompt)
+		else
+			prompt:InputHoldBegin()
+			task.wait(prompt.HoldDuration)
+			prompt:InputHoldEnd()
 		end
+		task.wait(0.3)
 	else
 		desativarAutoFeed("Sem Trigo no Inventário!")
 	end
@@ -485,7 +584,7 @@ task.spawn(function()
 				if not autoFeedActive then break end
 
 				local attrs = obterAtributosVaca(cowModel)
-				if attrs and attrs.IsOwner and attrs.Hunger < 90 then
+				if attrs and attrs.IsOwner and attrs.Hunger < 5 then
 					ProcessarAlimentacao(cowModel)
 				end
 			end
@@ -495,17 +594,23 @@ end)
 
 task.spawn(function()
 	while true do
-		task.wait(0.5)
+		task.wait(0.3)
 		if autoFarmActive and not isFeeding and PlacedFolder then
-			for _, cowModel in ipairs(PlacedFolder:GetChildren()) do
-				if not autoFarmActive or isFeeding then break end
+			local melhorVaca = nil
+			local maiorLitros = -1
 
+			for _, cowModel in ipairs(PlacedFolder:GetChildren()) do
 				local attrs = obterAtributosVaca(cowModel)
-				if attrs and attrs.IsOwner and attrs.StoredLiters > 0 then
-					if not (autoFeedActive and attrs.Hunger < 90) then
-						ProcessarOrdenha(cowModel)
+				if attrs and attrs.IsOwner and attrs.StoredLiters > maiorLitros then
+					if not (autoFeedActive and attrs.Hunger < 5) then
+						maiorLitros = attrs.StoredLiters
+						melhorVaca = cowModel
 					end
 				end
+			end
+
+			if melhorVaca and maiorLitros > 0 then
+				ProcessarOrdenha(melhorVaca)
 			end
 		end
 	end
