@@ -28,16 +28,11 @@ end)
 
 local PlacedFolder = Workspace:WaitForChild("Placed", 5)
 local RemotesFolder = ReplicatedStorage:WaitForChild("Remotes", 5)
-local MilkingControl = RemotesFolder and RemotesFolder:WaitForChild("MilkingControl", 5)
-local NotifyEvent = RemotesFolder and RemotesFolder:FindFirstChild("Notify")
 local HeldItemRequest = RemotesFolder and RemotesFolder:FindFirstChild("HeldItemRequest")
 
 local autoFarmActive = false
 local autoFeedActive = false
 local autoHarvestActive = false
-local isMilking = false
-local isFeeding = false
-local isHarvesting = false
 
 local countPlants = 0
 local countMilk = 0
@@ -393,21 +388,31 @@ LocalPlayer.CharacterAdded:Connect(function(char)
 	atualizarHighlightRig("none")
 end)
 
+-- AQUI É ONDE O BAGULHO FICA BRUTO! LENDO OS ATRIBUTOS DIRETOS!
 local function obterAtributosVaca(cowModel)
 	if not cowModel then return nil end
 	local inner = cowModel:FindFirstChild("Cow")
-	local ownerId = cowModel:GetAttribute("OwnerUserId") or (inner and inner:GetAttribute("OwnerUserId"))
-	local storedLiters = cowModel:GetAttribute("StoredLiters") or (inner and inner:GetAttribute("StoredLiters")) or 0
-	local maxMilkLiters = cowModel:GetAttribute("MaxMilkLiters") or (inner and inner:GetAttribute("MaxMilkLiters")) or 100
-	local hunger = cowModel:GetAttribute("Hunger") or (inner and inner:GetAttribute("Hunger"))
+	
+	local function getAttr(name)
+		local val = cowModel:GetAttribute(name)
+		if val == nil and inner then val = inner:GetAttribute(name) end
+		return val
+	end
 
-	if hunger == nil then hunger = 100 end
+	local ownerId = getAttr("OwnerUserId")
+	local storedLiters = getAttr("StoredLiters") or 0
+	local maxMilkLiters = getAttr("MaxMilkLiters") or 100
+	local hunger = getAttr("Hunger") or 100
+	local isBeingMilked = getAttr("IsBeingMilked")
+
+	if isBeingMilked == nil then isBeingMilked = false end
 
 	return {
 		IsOwner = (ownerId == LocalPlayer.UserId),
 		StoredLiters = storedLiters,
 		MaxMilkLiters = maxMilkLiters,
-		Hunger = hunger
+		Hunger = hunger,
+		IsBeingMilked = isBeingMilked
 	}
 end
 
@@ -479,7 +484,7 @@ local function verificarEEquiparTrigo()
 
 	if temTrigo and HeldItemRequest then
 		HeldItemRequest:FireServer("wheat")
-		task.wait(0.1)
+		task.wait(0.03)
 	end
 
 	return temTrigo
@@ -492,216 +497,175 @@ local function teleportarPara(pos)
 	end
 end
 
-local function exploitPrompt(plant)
-	local prompt = plant:FindFirstChild("HarvestPrompt", true) or plant:FindFirstChildWhichIsA("ProximityPrompt", true)
-	if prompt and fireproximityprompt then
-		fireproximityprompt(prompt, 1)
-		fireproximityprompt(prompt, 0)
-	end
-end
-
-local function EsperarFimDaOrdenha(cowModel)
-	local finalizado = false
-	local conexaoMilking, conexaoNotify
-
-	if MilkingControl then
-		conexaoMilking = MilkingControl.OnClientEvent:Connect(function(status)
-			if status == false then finalizado = true end
-		end)
-	end
-
-	if NotifyEvent then
-		conexaoNotify = NotifyEvent.OnClientEvent:Connect(function(title, message)
-			if message and string.find(message, "has no milk yet") then
-				finalizado = true
-			end
-		end)
-	end
-
-	local t = 0
-	while not finalizado and isMilking and autoFarmActive do
-		task.wait(0.2)
-		t = t + 0.2
-		
-		local attrs = obterAtributosVaca(cowModel)
-		if not attrs or attrs.StoredLiters <= 0 then
-			finalizado = true
-			break
-		end
-
-		if t > 25 then break end
-	end
-
-	if conexaoMilking then conexaoMilking:Disconnect() end
-	if conexaoNotify then conexaoNotify:Disconnect() end
-end
-
 local function ProcessarAlimentacao(cowModel)
-	local attrs = obterAtributosVaca(cowModel)
-	if not attrs or attrs.Hunger >= 5 then return end
-
 	local prompt = obterFeedPrompt(cowModel)
 	local pos = obterPosicaoVaca(cowModel)
-	if not prompt or not pos then return end
+	if not prompt or not pos then return false end
 
 	if not verificarEEquiparTrigo() then
 		atualizarStatusTexto("Aguardando Trigo...", Color3.fromRGB(255, 200, 0))
-		return
+		return false
 	end
 
-	while isMilking or isHarvesting do
-		task.wait(0.1)
-	end
-
-	isFeeding = true
 	atualizarHighlightRig("feed")
 	atualizarStatusTexto("Alimentando...", Color3.fromRGB(255, 50, 50))
 
 	teleportarPara(pos)
-	task.wait(0.2)
-
+	task.wait(0.5) -- O DELAY EXIGIDO PARA NÃO BUBAR
+	
 	for i = 1, 2 do
 		if verificarEEquiparTrigo() then
 			if fireproximityprompt then
-				fireproximityprompt(prompt)
+				fireproximityprompt(prompt, 1)
+				fireproximityprompt(prompt, 0)
 			else
 				prompt:InputHoldBegin()
 				task.wait(prompt.HoldDuration)
 				prompt:InputHoldEnd()
 			end
-			task.wait(0.3)
-		else
-			atualizarStatusTexto("Aguardando Trigo...", Color3.fromRGB(255, 200, 0))
-			break
 		end
 	end
 
 	countFed = countFed + 1
-	atualizarStatusTexto("Alimentado com sucesso!", Color3.fromRGB(0, 255, 150))
-
-	isFeeding = false
-	atualizarHighlightRig("none")
+	return true
 end
 
 local function ProcessarOrdenha(cowModel)
 	local prompt = obterMilkPrompt(cowModel)
 	local pos = obterPosicaoVaca(cowModel)
-	if not prompt or not pos then return end
-
-	while isFeeding or isHarvesting do
-		task.wait(0.1)
-	end
-
-	isMilking = true
-	atualizarHighlightRig("farm")
-	atualizarStatusTexto("Ordenhando...", Color3.fromRGB(0, 150, 255))
+	if not prompt or not pos then return false end
 
 	teleportarPara(pos)
-	task.wait(0.2)
+	task.wait(0.5) -- O DELAY EXIGIDO
 
 	if fireproximityprompt then
-		fireproximityprompt(prompt)
+		fireproximityprompt(prompt, 1)
+		fireproximityprompt(prompt, 0)
 	else
 		prompt:InputHoldBegin()
 		task.wait(prompt.HoldDuration)
 		prompt:InputHoldEnd()
 	end
-
-	EsperarFimDaOrdenha(cowModel)
 	
+	-- Um pequeno delay extra só pra garantir que o servidor mudou o IsBeingMilked = true antes do próximo loop rodar
+	task.wait(0.5) 
 	countMilk = countMilk + 1
-	isMilking = false
-	atualizarStatusTexto("OK", Color3.fromRGB(0, 255, 150))
-	atualizarHighlightRig("none")
+	return true
+end
+
+-- =========================================================================================
+-- O NOVO MASTER LOOP SUPREMO QUE LÊ OS ATRIBUTOS (SEM CONGELAMENTOS LIXOS)
+-- =========================================================================================
+
+local function CheckAndDoFarm()
+	local melhorVaca = nil
+	local maiorLitros = -1
+
+	if not PlacedFolder then return false end
+
+	for _, cowModel in ipairs(PlacedFolder:GetChildren()) do
+		local attrs = obterAtributosVaca(cowModel)
+		if attrs and attrs.IsOwner and not attrs.IsBeingMilked then
+			local estaCheia = (attrs.StoredLiters >= 100) or (attrs.StoredLiters >= attrs.MaxMilkLiters)
+			if estaCheia and attrs.StoredLiters > maiorLitros then
+				maiorLitros = attrs.StoredLiters
+				melhorVaca = cowModel
+			end
+		end
+	end
+
+	if melhorVaca and maiorLitros > 0 then
+		ProcessarOrdenha(melhorVaca)
+		return true
+	end
+	return false
+end
+
+local function CheckAndDoHarvest()
+	local colheuAlgo = false
+
+	for _, plant in ipairs(CollectionService:GetTagged("Harvestable")) do
+		if plant:GetAttribute("OwnerUserId") == LocalPlayer.UserId then
+			local prompt = plant:FindFirstChild("HarvestPrompt", true) or plant:FindFirstChildWhichIsA("ProximityPrompt", true)
+			if prompt then
+				colheuAlgo = true
+				atualizarHighlightRig("harvest")
+				atualizarStatusTexto("Colhendo Tudo...", Color3.fromRGB(0, 255, 100))
+
+				teleportarPara(plant:GetPivot().Position)
+				task.wait() 
+				
+				if fireproximityprompt then
+					fireproximityprompt(prompt, 1)
+					fireproximityprompt(prompt, 0)
+				else
+					prompt:InputHoldBegin()
+					prompt:InputHoldEnd()
+				end
+				
+				countPlants = countPlants + 1
+			end
+		end
+	end
+	
+	return colheuAlgo
+end
+
+local function CheckAndDoFeed()
+	if not PlacedFolder then return false end
+	for _, cowModel in ipairs(PlacedFolder:GetChildren()) do
+		local attrs = obterAtributosVaca(cowModel)
+		if attrs and attrs.IsOwner and not attrs.IsBeingMilked and attrs.Hunger < 5 then
+			ProcessarAlimentacao(cowModel)
+			return true
+		end
+	end
+	return false
 end
 
 task.spawn(function()
 	while true do
-		task.wait(0.2)
-		if autoFeedActive and PlacedFolder then
-			for _, cowModel in ipairs(PlacedFolder:GetChildren()) do
-				if not autoFeedActive then break end
-				while isMilking or isHarvesting do
-					task.wait(0.2)
-				end
-
-				local attrs = obterAtributosVaca(cowModel)
-				if attrs and attrs.IsOwner and attrs.Hunger < 5 then
-					ProcessarAlimentacao(cowModel)
-				end
-			end
-		end
-	end
-end)
-
-task.spawn(function()
-	while true do
-		task.wait(0.3)
-		if autoFarmActive and not isMilking and PlacedFolder then
-			while isFeeding or isHarvesting do
-				task.wait(0.2)
-			end
-
-			local melhorVaca = nil
-			local maiorLitros = -1
-
+		task.wait(0.1) -- Loop Tick Suave
+		
+		-- 1. VERIFICAÇÃO CRÍTICA: Você está ordenhando alguma vaca AGORA MESMO?
+		local isPlayerMilkingRightNow = false
+		if PlacedFolder then
 			for _, cowModel in ipairs(PlacedFolder:GetChildren()) do
 				local attrs = obterAtributosVaca(cowModel)
-				if attrs and attrs.IsOwner then
-					local estaCheia = (attrs.StoredLiters >= 100) or (attrs.StoredLiters >= attrs.MaxMilkLiters)
-
-					if estaCheia and attrs.StoredLiters > maiorLitros then
-						if not (autoFeedActive and attrs.Hunger < 5 and verificarEEquiparTrigo()) then
-							maiorLitros = attrs.StoredLiters
-							melhorVaca = cowModel
-						end
-					end
+				if attrs and attrs.IsOwner and attrs.IsBeingMilked then
+					isPlayerMilkingRightNow = true
+					break
 				end
 			end
+		end
 
-			if melhorVaca and maiorLitros > 0 and autoFarmActive then
-				ProcessarOrdenha(melhorVaca)
-			end
+		-- Se o jogador está na animação de ordenhar (Atributo True), O SCRIPT NÃO FAZ MAIS NADA E ESPERA!
+		if isPlayerMilkingRightNow then
+			atualizarHighlightRig("farm")
+			atualizarStatusTexto("Tirando Leite...", Color3.fromRGB(0, 150, 255))
+			continue
+		end
+
+		-- Se NÃO está tirando leite, as portas estão abertas pra executar a hierarquia!
+		local executouAcao = false
+
+		if autoFarmActive and CheckAndDoFarm() then
+			executouAcao = true
+		elseif autoHarvestActive and CheckAndDoHarvest() then
+			executouAcao = true
+		elseif autoFeedActive and CheckAndDoFeed() then
+			executouAcao = true
+		end
+
+		-- Reset visual se nada estiver acontecendo
+		if not executouAcao then
+			atualizarHighlightRig("none")
+			atualizarStatusTexto("Aguardando...", Color3.fromRGB(0, 255, 150))
 		end
 	end
 end)
 
-task.spawn(function()
-	while true do
-		task.wait(0.05)
-		if autoHarvestActive then
-			while isMilking or isFeeding do
-				task.wait(0.05)
-			end
-
-			local myPlants = {}
-			for _, plant in ipairs(CollectionService:GetTagged("Harvestable")) do
-				if plant:GetAttribute("OwnerUserId") == LocalPlayer.UserId then
-					table.insert(myPlants, plant)
-				end
-			end
-
-			for _, plant in ipairs(myPlants) do
-				if not autoHarvestActive or isMilking or isFeeding then break end
-				local prompt = plant:FindFirstChild("HarvestPrompt", true) or plant:FindFirstChildWhichIsA("ProximityPrompt", true)
-				if prompt then
-					isHarvesting = true
-					atualizarHighlightRig("harvest")
-					atualizarStatusTexto("Colhendo (TURBO)...", Color3.fromRGB(0, 255, 100))
-
-					teleportarPara(plant:GetPivot().Position)
-					exploitPrompt(plant)
-					task.wait(0.02)
-
-					countPlants = countPlants + 1
-					isHarvesting = false
-					atualizarStatusTexto("OK", Color3.fromRGB(0, 255, 150))
-					atualizarHighlightRig("none")
-				end
-			end
-		end
-	end
-end)
+-- =========================================================================================
 
 autoFarmBtn.MouseButton1Click:Connect(function()
 	autoFarmActive = not autoFarmActive
