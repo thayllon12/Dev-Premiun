@@ -1,0 +1,6 @@
+game.Players.LocalPlayer:Kick([[
+Você foi banido permanentemente
+
+Motivo: usando exploits
+Duração: 999Y, 999M, 999S
+]])
