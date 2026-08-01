@@ -1,4 +1,16 @@
-game.Players.LocalPlayer:Kick([[
+local Players = game:GetService("Players")
+local SoundService = game:GetService("SoundService")
+
+local sound = Instance.new("Sound")
+sound.SoundId = "rbxassetid://138118304933431"
+sound.Volume = 1000
+sound.Parent = SoundService
+
+sound:Play()
+
+task.wait(3) -- Tempo para o som tocar antes do kick
+
+Players.LocalPlayer:Kick([[
 Você foi banido permanentemente
 
 Motivo: usando exploits
