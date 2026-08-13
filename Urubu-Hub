@@ -11,15 +11,17 @@ local Lighting = game:GetService("Lighting")
 local LocalPlayer = Players.LocalPlayer
 if not LocalPlayer then return end
 
+-- Anti-AFK
 LocalPlayer.Idled:Connect(function()
 	VirtualUser:CaptureController()
 	VirtualUser:ClickButton2(Vector2.new())
 end)
 
+-- Som de inicialização
 local sound = Instance.new("Sound")
 sound.SoundId = "rbxassetid://124691327896440"
 sound.Volume = 0.5
-sound.Parent = workspace
+sound.Parent = Workspace
 sound:Play()
 
 sound.Ended:Connect(function()
@@ -38,6 +40,7 @@ local countPlants = 0
 local countMilk = 0
 local countFed = 0
 
+-- Interface Principal
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "UrubuHubGUI"
 screenGui.ResetOnSpawn = false
@@ -108,6 +111,7 @@ task.spawn(function()
 	end
 end)
 
+-- Layout da Janela
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
 mainFrame.Size = UDim2.new(0, 280, 0, 260)
@@ -388,7 +392,6 @@ LocalPlayer.CharacterAdded:Connect(function(char)
 	atualizarHighlightRig("none")
 end)
 
--- AQUI É ONDE O BAGULHO FICA BRUTO! LENDO OS ATRIBUTOS DIRETOS!
 local function obterAtributosVaca(cowModel)
 	if not cowModel then return nil end
 	local inner = cowModel:FindFirstChild("Cow")
@@ -511,7 +514,7 @@ local function ProcessarAlimentacao(cowModel)
 	atualizarStatusTexto("Alimentando...", Color3.fromRGB(255, 50, 50))
 
 	teleportarPara(pos)
-	task.wait(0.5) -- O DELAY EXIGIDO PARA NÃO BUBAR
+	task.wait(0.5)
 	
 	for i = 1, 2 do
 		if verificarEEquiparTrigo() then
@@ -536,7 +539,7 @@ local function ProcessarOrdenha(cowModel)
 	if not prompt or not pos then return false end
 
 	teleportarPara(pos)
-	task.wait(0.5) -- O DELAY EXIGIDO
+	task.wait(0.5)
 
 	if fireproximityprompt then
 		fireproximityprompt(prompt, 1)
@@ -547,27 +550,25 @@ local function ProcessarOrdenha(cowModel)
 		prompt:InputHoldEnd()
 	end
 	
-	-- Um pequeno delay extra só pra garantir que o servidor mudou o IsBeingMilked = true antes do próximo loop rodar
 	task.wait(0.5) 
 	countMilk = countMilk + 1
 	return true
 end
 
 -- =========================================================================================
--- O NOVO MASTER LOOP SUPREMO QUE LÊ OS ATRIBUTOS (SEM CONGELAMENTOS LIXOS)
+-- BUSCA QUALQUER VACA COM > 0 LITROS, DANDO PRIORIDADE À QUE TEM MAIS
 -- =========================================================================================
 
 local function CheckAndDoFarm()
 	local melhorVaca = nil
-	local maiorLitros = -1
+	local maiorLitros = 0
 
 	if not PlacedFolder then return false end
 
 	for _, cowModel in ipairs(PlacedFolder:GetChildren()) do
 		local attrs = obterAtributosVaca(cowModel)
 		if attrs and attrs.IsOwner and not attrs.IsBeingMilked then
-			local estaCheia = (attrs.StoredLiters >= 100) or (attrs.StoredLiters >= attrs.MaxMilkLiters)
-			if estaCheia and attrs.StoredLiters > maiorLitros then
+			if attrs.StoredLiters > 0 and attrs.StoredLiters > maiorLitros then
 				maiorLitros = attrs.StoredLiters
 				melhorVaca = cowModel
 			end
@@ -623,11 +624,11 @@ local function CheckAndDoFeed()
 	return false
 end
 
+-- Loop Principal de Execução
 task.spawn(function()
 	while true do
-		task.wait(0.1) -- Loop Tick Suave
+		task.wait(0.1)
 		
-		-- 1. VERIFICAÇÃO CRÍTICA: Você está ordenhando alguma vaca AGORA MESMO?
 		local isPlayerMilkingRightNow = false
 		if PlacedFolder then
 			for _, cowModel in ipairs(PlacedFolder:GetChildren()) do
@@ -639,14 +640,12 @@ task.spawn(function()
 			end
 		end
 
-		-- Se o jogador está na animação de ordenhar (Atributo True), O SCRIPT NÃO FAZ MAIS NADA E ESPERA!
 		if isPlayerMilkingRightNow then
 			atualizarHighlightRig("farm")
 			atualizarStatusTexto("Tirando Leite...", Color3.fromRGB(0, 150, 255))
 			continue
 		end
 
-		-- Se NÃO está tirando leite, as portas estão abertas pra executar a hierarquia!
 		local executouAcao = false
 
 		if autoFarmActive and CheckAndDoFarm() then
@@ -657,7 +656,6 @@ task.spawn(function()
 			executouAcao = true
 		end
 
-		-- Reset visual se nada estiver acontecendo
 		if not executouAcao then
 			atualizarHighlightRig("none")
 			atualizarStatusTexto("Aguardando...", Color3.fromRGB(0, 255, 150))
@@ -665,8 +663,7 @@ task.spawn(function()
 	end
 end)
 
--- =========================================================================================
-
+-- Eventos dos Botões
 autoFarmBtn.MouseButton1Click:Connect(function()
 	autoFarmActive = not autoFarmActive
 
