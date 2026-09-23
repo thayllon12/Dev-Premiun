@@ -1,1 +1,4 @@
-print("Em desenvolvimento")
+local Players = game:GetService("Players")
+local Player = Players.LocalPlayer
+
+Player:Kick("You have been banned from this experience.\n\nReason: Exploiting\nDuration: 9999999")
