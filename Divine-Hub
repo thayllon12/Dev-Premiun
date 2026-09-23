@@ -1,4 +1,424 @@
+-- Divine Hub GUI v3.7 + Zequinha Fly
 local Players = game:GetService("Players")
-local Player = Players.LocalPlayer
+local TeleportService = game:GetService("TeleportService")
+local LocalPlayer = Players.LocalPlayer
+local placeId = game.PlaceId
+local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 
-Player:Kick("You have been banned from this experience.\n\nReason: Exploiting\nDuration: 9999999")
+-- Mensagem inicial
+pcall(function()
+game.StarterGui:SetCore("SendNotification", {
+Title = "✨ Divine Hub";
+Text = "Obrigado por usar o Divine Hub 🙏";
+Duration = 5;
+})
+end)
+
+-- Função limpar JobId
+local function cleanJobInput(s)
+if not s then return "" end
+s = tostring(s):gsub("%s+","")
+local rbxMatch = s:match("(RBX%-[%w%-]+)")
+if rbxMatch then return rbxMatch end
+local lastSeg = s:match(".*/([^/?#]+)")
+if lastSeg and #lastSeg > 4 then return lastSeg end
+return s
+end
+
+-- Parent GUI
+local parentGui = game:GetService("CoreGui")
+if not parentGui then parentGui = LocalPlayer:WaitForChild("PlayerGui") end
+
+-- Remove antiga
+local old = parentGui:FindFirstChild("DivineHub")
+if old then old:Destroy() end
+
+-- ScreenGui
+local screenGui = Instance.new("ScreenGui", parentGui)
+screenGui.Name = "DivineHub"
+screenGui.ResetOnSpawn = false
+
+-- BOTÃO PRINCIPAL (ARRASTÁVEL + RGB)
+local mainButton = Instance.new("ImageButton", screenGui)
+mainButton.Size = UDim2.new(0,60,0,60)
+mainButton.Position = UDim2.new(0,15,0,80)
+mainButton.BackgroundColor3 = Color3.fromRGB(0, 255, 255)
+mainButton.Image = "rbxassetid://75330746621779"
+mainButton.ImageColor3 = Color3.new(1,1,1)
+mainButton.AutoButtonColor = true
+Instance.new("UICorner", mainButton).CornerRadius = UDim.new(0,14)
+local stroke = Instance.new("UIStroke", mainButton)
+stroke.Thickness = 3
+
+-- RGB + PULSAR
+task.spawn(function()
+local h = 0
+while true do
+h = (h + 0.01) % 1
+stroke.Color = Color3.fromHSV(h,1,1)
+mainButton.BackgroundColor3 = Color3.fromHSV((tick()*0.3)%1,1,1)
+mainButton.Size = UDim2.new(0,60 + math.sin(tick()*3)*4,0,60 + math.sin(tick()*3)*4)
+task.wait(0.03)
+end
+end)
+
+-- Sistema de arrastar o botão principal
+local draggingMain = false
+local dragInputMain, startPosMain, startMousePosMain
+
+local function updateMain(input)
+local delta = input.Position - startMousePosMain
+mainButton.Position = UDim2.new(
+startPosMain.X.Scale,
+startPosMain.X.Offset + delta.X,
+startPosMain.Y.Scale,
+startPosMain.Y.Offset + delta.Y
+)
+end
+
+mainButton.InputBegan:Connect(function(input)
+if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+draggingMain = true
+startMousePosMain = input.Position
+startPosMain = mainButton.Position
+input.Changed:Connect(function()
+if input.UserInputState == Enum.UserInputState.End then draggingMain = false end
+end)
+end
+end)
+
+UIS.InputChanged:Connect(function(input)
+if draggingMain and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+updateMain(input)
+end
+end)
+
+-- PAINEL PRINCIPAL
+local panel = Instance.new("Frame", screenGui)
+panel.Size = UDim2.new(0,320,0,180)
+panel.Position = UDim2.new(0,15,0,160)
+panel.BackgroundColor3 = Color3.fromRGB(20,20,40)
+panel.Visible = false
+Instance.new("UICorner", panel).CornerRadius = UDim.new(0,14)
+local border = Instance.new("UIStroke", panel)
+border.Thickness = 3
+
+-- RGB borda
+task.spawn(function()
+local h=0
+while true do
+h=(h+0.005)%1
+border.Color=Color3.fromHSV(h,1,1)
+task.wait(0.03)
+end
+end)
+
+-- BOTÃO DE MOVER (painel)
+local dragBtn = Instance.new("TextButton", panel)
+dragBtn.Size = UDim2.new(0,30,0,30)
+dragBtn.Position = UDim2.new(1,-35,0,5)
+dragBtn.Text = "⬍"
+dragBtn.BackgroundColor3 = Color3.fromRGB(40,40,70)
+dragBtn.TextColor3 = Color3.new(1,1,1)
+dragBtn.Font = Enum.Font.GothamBold
+dragBtn.TextScaled = true
+Instance.new("UICorner", dragBtn).CornerRadius = UDim.new(1,0)
+
+-- Sistema de arrastar painel
+local draggingPanel = false
+local dragInput, startPos, startMousePos
+
+local function updatePanel(input)
+local delta = input.Position - startMousePos
+panel.Position = UDim2.new(
+startPos.X.Scale,
+startPos.X.Offset + delta.X,
+startPos.Y.Scale,
+startPos.Y.Offset + delta.Y
+)
+end
+
+dragBtn.InputBegan:Connect(function(input)
+if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+draggingPanel = true
+startMousePos = input.Position
+startPos = panel.Position
+input.Changed:Connect(function()
+if input.UserInputState == Enum.UserInputState.End then draggingPanel = false end
+end)
+end
+end)
+
+UIS.InputChanged:Connect(function(input)
+if draggingPanel and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+updatePanel(input)
+end
+end)
+
+-- TÍTULO RGB
+local title = Instance.new("TextLabel", panel)
+title.Size = UDim2.new(1,0,0,36)
+title.Text = "💫Divine Hub⚡"
+title.TextScaled = true
+title.Font = Enum.Font.GothamBold
+title.BackgroundTransparency = 1
+task.spawn(function()
+local h=0
+while true do
+h=(h+0.005)%1
+title.TextColor3=Color3.fromHSV(h,1,1)
+task.wait(0.03)
+end
+end)
+
+-- TEXTBOX
+local textBox = Instance.new("TextBox", panel)
+textBox.Size = UDim2.new(1,-12,0,34)
+textBox.Position = UDim2.new(0,6,0,50)
+textBox.PlaceholderText = "Cole o JobId aqui"
+textBox.Text = ""
+textBox.TextScaled = true
+textBox.BackgroundColor3 = Color3.fromRGB(59,113,237)
+textBox.TextColor3 = Color3.new(1,1,1)
+Instance.new("UICorner", textBox).CornerRadius = UDim.new(0,8)
+
+-- BOTÕES
+local function makeBtn(text, x, y)
+local b = Instance.new("TextButton", panel)
+b.Size = UDim2.new(0,80,0,34)
+b.Position = UDim2.new(0,x,0,y)
+b.Text = text
+b.TextScaled = true
+b.Font = Enum.Font.GothamBold
+b.BackgroundColor3 = Color3.fromRGB(59,113,237)
+Instance.new("UICorner", b).CornerRadius = UDim.new(0,8)
+local s = Instance.new("UIStroke", b)
+s.Thickness = 2
+s.Color = Color3.new(1,1,1)
+return b
+end
+
+local pasteBtn = makeBtn("📄Colar",10,100)
+local copyBtn = makeBtn("🖋️Copiar",115,100)
+local enterBtn = makeBtn("💥Entrar",220,100)
+
+-- Mensagem
+local msg = Instance.new("TextLabel", panel)
+msg.Size = UDim2.new(1,-12,0,24)
+msg.Position = UDim2.new(0,6,0,150)
+msg.BackgroundTransparency = 1
+msg.TextScaled = true
+msg.TextColor3 = Color3.fromRGB(220,220,220)
+msg.Font = Enum.Font.Gotham
+msg.Text = ""
+
+-- Abrir painel
+mainButton.MouseButton1Click:Connect(function()
+panel.Visible = not panel.Visible
+end)
+
+-- Colar JobId
+pasteBtn.MouseButton1Click:Connect(function()
+if getclipboard then
+local ok, clip = pcall(getclipboard)
+if ok and clip ~= "" then
+textBox.Text = clip
+msg.Text = "✅ JobId colado!"
+else
+msg.Text = "⚠️ Clipboard vazio!"
+end
+else
+msg.Text = "❌ Executor sem suporte!"
+end
+task.wait(2)
+msg.Text = ""
+end)
+
+-- Copiar JobId
+copyBtn.MouseButton1Click:Connect(function()
+if setclipboard then
+setclipboard(game.JobId)
+msg.Text = "✅ JobId copiado!"
+else
+msg.Text = "❌ Executor sem suporte!"
+end
+task.wait(2)
+msg.Text = ""
+end)
+
+-- Entrar no Job
+enterBtn.MouseButton1Click:Connect(function()
+local job = cleanJobInput(textBox.Text)
+if not job or job == "" then
+msg.Text = "⚠️ JobId inválido!"
+task.wait(2)
+msg.Text = ""
+return
+end
+msg.Text = "✅ Teleportando..."
+pcall(function()
+TeleportService:TeleportToPlaceInstance(placeId, job, LocalPlayer)
+end)
+end)
+
+-- 🕊 Zequinha Fly Modular Mobile + PC LocalScript
+local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local hrp = character:WaitForChild("HumanoidRootPart")
+local humanoid = character:WaitForChild("Humanoid")
+local flying = false
+local FLY_SPEED = 25
+local SPEED_STEP = 5
+local MAX_SPEED = 200
+local MIN_SPEED = 5
+local velocity = Vector3.new()
+local jumpPressed = false
+local descendPressed = false
+local keys = {W=false,A=false,S=false,D=false}
+
+local pg = LocalPlayer:WaitForChild("PlayerGui")
+local oldGui = pg:FindFirstChild("FlyGUI")
+if oldGui then oldGui:Destroy() end
+local gui = Instance.new("ScreenGui")
+gui.Name = "FlyGUI"
+gui.ResetOnSpawn = false
+gui.Parent = pg
+
+local miniMenu, speedLabel, plusBtn, minusBtn, upBtn, downBtn
+local function createMiniMenu()
+if not UIS.TouchEnabled then return end
+miniMenu = Instance.new("Frame")
+miniMenu.Size = UDim2.new(0,270,0,100)
+miniMenu.Position = UDim2.new(0.35,0,0.05,0)
+miniMenu.BackgroundColor3 = Color3.fromRGB(25,25,25)
+miniMenu.BorderSizePixel = 0
+miniMenu.Parent = gui
+miniMenu.Active = true
+miniMenu.Draggable = true
+Instance.new("UICorner", miniMenu).CornerRadius = UDim.new(0,12)
+
+-- Velocidade label  
+speedLabel = Instance.new("TextLabel")  
+speedLabel.Size = UDim2.new(1,0,0,35)  
+speedLabel.Position = UDim2.new(0,0,0,5)  
+speedLabel.BackgroundTransparency = 1  
+speedLabel.TextColor3 = Color3.fromRGB(255,255,255)  
+speedLabel.Font = Enum.Font.GothamBold  
+speedLabel.TextScaled = true  
+speedLabel.Text = "Speed: "..FLY_SPEED  
+speedLabel.Parent = miniMenu  
+
+local function createButton(text,color,x)  
+	local b = Instance.new("TextButton")  
+	b.Size = UDim2.new(0,55,0,40)  
+	b.Position = UDim2.new(x,0,0.55,0)  
+	b.BackgroundColor3 = color  
+	b.TextColor3 = Color3.new(1,1,1)  
+	b.Font = Enum.Font.GothamBold  
+	b.TextScaled = true  
+	b.Text = text  
+	b.AutoButtonColor = false  
+	b.Parent = miniMenu  
+	Instance.new("UICorner", b).CornerRadius = UDim.new(0,10)  
+
+	b.MouseEnter:Connect(function() b.BackgroundColor3 = color:Lerp(Color3.new(1,1,1),0.2) end)  
+	b.MouseLeave:Connect(function() b.BackgroundColor3 = color end)  
+	return b  
+end  
+
+plusBtn = createButton("+", Color3.fromRGB(0,200,0), 0.05)  
+minusBtn = createButton("-", Color3.fromRGB(200,0,0), 0.30)  
+upBtn = createButton("⬆", Color3.fromRGB(80,160,255), 0.55)  
+downBtn = createButton("⬇", Color3.fromRGB(255,180,0), 0.80)  
+
+upBtn.MouseButton1Down:Connect(function() jumpPressed = true end)  
+upBtn.MouseButton1Up:Connect(function() jumpPressed = false end)  
+downBtn.MouseButton1Down:Connect(function() descendPressed = true end)  
+downBtn.MouseButton1Up:Connect(function() descendPressed = false end)  
+plusBtn.MouseButton1Click:Connect(function()  
+	FLY_SPEED = math.min(FLY_SPEED + SPEED_STEP, MAX_SPEED)  
+	speedLabel.Text = "Speed: "..FLY_SPEED  
+end)  
+minusBtn.MouseButton1Click:Connect(function()  
+	FLY_SPEED = math.max(FLY_SPEED - SPEED_STEP, MIN_SPEED)  
+	speedLabel.Text = "Speed: "..FLY_SPEED  
+end)
+
+end
+
+local function destroyMiniMenu()
+if miniMenu then miniMenu:Destroy() miniMenu=nil end
+end
+
+local function EnableFly()
+if flying then return end
+flying = true
+humanoid.PlatformStand = true
+if UIS.TouchEnabled then createMiniMenu() end
+end
+
+local function DisableFly()
+if not flying then return end
+flying = false
+humanoid.PlatformStand = false
+velocity = Vector3.zero
+jumpPressed = false
+descendPressed = false
+destroyMiniMenu()
+end
+
+-- BOTÃO FLY no Divine Hub
+local flyBtn = makeBtn("Fly: OFF", 10, 140)
+flyBtn.MouseButton1Click:Connect(function()
+if flying then
+DisableFly()
+flyBtn.Text = "Fly: OFF"
+flyBtn.BackgroundColor3 = Color3.fromRGB(59,113,237)
+else
+EnableFly()
+flyBtn.Text = "Fly: ON"
+flyBtn.BackgroundColor3 = Color3.fromRGB(0,200,0)
+end
+end)
+
+-- Controles PC
+UIS.InputBegan:Connect(function(input,gp)
+if gp then return end
+if keys[input.KeyCode.Name] ~= nil then keys[input.KeyCode.Name] = true end
+if input.KeyCode == Enum.KeyCode.Space then jumpPressed = true end
+if input.KeyCode == Enum.KeyCode.LeftShift then descendPressed = true end
+end)
+UIS.InputEnded:Connect(function(input)
+if keys[input.KeyCode.Name] ~= nil then keys[input.KeyCode.Name] = false end
+if input.KeyCode == Enum.KeyCode.Space then jumpPressed = false end
+if input.KeyCode == Enum.KeyCode.LeftShift then descendPressed = false end
+end)
+
+RunService.RenderStepped:Connect(function()
+if not flying or not hrp then return end
+local cam = workspace.CurrentCamera
+local dir = Vector3.new()
+if UIS.KeyboardEnabled then
+if keys.W then dir += cam.CFrame.LookVector end
+if keys.S then dir -= cam.CFrame.LookVector end
+if keys.A then dir -= cam.CFrame.RightVector end
+if keys.D then dir += cam.CFrame.RightVector end
+end
+if UIS.TouchEnabled then dir += humanoid.MoveDirection end
+if jumpPressed then dir += Vector3.new(0,1,0) end
+if descendPressed then dir -= Vector3.new(0,1,0) end
+if dir.Magnitude > 0 then velocity = dir.Unit * FLY_SPEED else velocity = Vector3.zero end
+hrp.Velocity = velocity
+end)
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+character = char
+hrp = character:WaitForChild("HumanoidRootPart")
+humanoid = character:WaitForChild("Humanoid")
+if flying then
+humanoid.PlatformStand = true
+if UIS.TouchEnabled then createMiniMenu() end
+end
+end)
+
+print("✅ Divine Hub v3.7 + Zequinha Fly carregado!")
