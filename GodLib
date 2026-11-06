@@ -1,11 +1,10 @@
--- GodLib v2.3.0
+-- GodLib v2.2.0
 local GodLib = {}
-GodLib.Options = {}
-GodLib.Connections = {}
-GodLib.Version = "2.3.0"
+GodLib.Version = "BETA"
 GodLib.Lang = "Português"
+GodLib.Options = {}
 GodLib.Flags = {}
-GodLib.Webhook = nil
+GodLib.Connections = {}
 GodLib.Icons = {
 		["accessibility"] = "rbxassetid://10709751939",
 		["activity"] = "rbxassetid://10709752035",
@@ -827,97 +826,106 @@ GodLib.Icons = {
 		["zoom-out"] = "rbxassetid://10747384679",
 	}
 
-local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
-local HttpService = game:GetService("HttpService")
-local CoreGui = game:GetService("CoreGui")
+local startClock = os.clock()
 
-local player = Players.LocalPlayer
-local playerGui = player:FindFirstChildOfClass("PlayerGui") or player:WaitForChild("PlayerGui", 10)
-local camera = workspace.CurrentCamera or workspace:WaitForChild("CurrentCamera", 10)
-local genv = (getgenv and getgenv()) or _G
-
--- ========== UTILIDADES (compatível com Xeno, Synapse, Fluxus, Delta, Krnl, etc) ==========
-local function log(msg) warn("[GodLib] " .. tostring(msg)) end
-
-local function safeCall(fn, ...)
-	if type(fn) ~= "function" then return false end
-	local ok, res = pcall(fn, ...)
-	if not ok then log("erro: " .. tostring(res)) end
-	return ok, res
+-- ========== SERVIÇOS (com fallback) ==========
+local function getService(name)
+	local ok, s = pcall(function() return game:GetService(name) end)
+	return ok and s or nil
 end
 
-local function clearTable(t)
-	for k in pairs(t) do t[k] = nil end
+local Players = getService("Players")
+local UserInputService = getService("UserInputService")
+local TweenService = getService("TweenService")
+local HttpService = getService("HttpService")
+local CoreGui = getService("CoreGui")
+
+local player = Players and Players.LocalPlayer
+local playerGui = player and (player:FindFirstChildOfClass("PlayerGui") or player:WaitForChild("PlayerGui", 10))
+
+local function getCamera()
+	return workspace.CurrentCamera or workspace:FindFirstChildOfClass("Camera")
 end
 
+local genv = (typeof(getgenv) == "function" and getgenv()) or _G
+
+local function log(msg)
+	warn("[GodLib] " .. tostring(msg))
+end
+
+-- ========== CAPACIDADES DO EXECUTOR ==========
+local CAP = {}
+CAP.canvasGroup = (pcall(Instance.new, "CanvasGroup"))
+CAP.gethui = typeof(gethui) == "function"
+CAP.protect = (typeof(syn) == "table" and typeof(syn.protect_gui) == "function") or typeof(protect_gui) == "function"
+CAP.cloneref = typeof(cloneref) == "function"
+CAP.fs = typeof(writefile) == "function" and typeof(readfile) == "function" and typeof(isfile) == "function"
+CAP.identify = typeof(identifyexecutor) == "function"
+CAP.mobile = (UserInputService and UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled) or false
+CAP.request = (function()
+	if typeof(request) == "function" then return request end
+	if typeof(http_request) == "function" then return http_request end
+	if typeof(syn) == "table" and typeof(syn.request) == "function" then return syn.request end
+	if typeof(http) == "table" and typeof(http.request) == "function" then return http.request end
+	return nil
+end)()
+
+-- ========== PROTEÇÃO DA GUI ==========
 local function randomName(len)
 	local chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	local t = {}
-	for i = 1, len or 12 do
+	local out = {}
+	for i = 1, len do
 		local idx = math.random(1, #chars)
-		t[i] = chars:sub(idx, idx)
+		out[i] = chars:sub(idx, idx)
 	end
-	return table.concat(t)
+	return table.concat(out)
 end
 
-local function isoNow()
-	local ok, res = pcall(function() return DateTime.now():ToIsoDate() end)
-	if ok then return res end
-	return os.date("!%Y-%m-%dT%H:%M:%SZ")
-end
-
--- Requisição HTTP universal
-local requestFn = (syn and syn.request)
-	or (http and http.request)
-	or http_request
-	or (fluxus and fluxus.request)
-	or request
-	or (getgenv and rawget(getgenv(), "request"))
-
--- ========== PARENT / PROTEÇÃO ==========
 local function getHiddenParent()
-	local candidates = {
-		function() if gethui then return gethui() end end,
-		function() return CoreGui end,
-		function() if cloneref then return cloneref(CoreGui) end end,
-		function() return playerGui end,
-	}
-	for _, fn in ipairs(candidates) do
-		local ok, res = pcall(fn)
-		if ok and typeof(res) == "Instance" then return res end
+	if CAP.gethui then
+		local ok, res = pcall(gethui)
+		if ok and res then return res end
+	end
+	if CoreGui and (CAP.protect or CAP.cloneref) then
+		local ok, res = pcall(function()
+			return CAP.cloneref and cloneref(CoreGui) or CoreGui
+		end)
+		if ok and res then return res end
 	end
 	return playerGui
 end
 
 local function protectGui(gui)
-	if syn and syn.protect_gui then pcall(syn.protect_gui, gui) end
-	if protect_gui then pcall(protect_gui, gui) end
+	pcall(function() gui.Name = randomName(16) end)
+	if typeof(syn) == "table" and typeof(syn.protect_gui) == "function" then
+		pcall(syn.protect_gui, gui)
+	elseif typeof(protect_gui) == "function" then
+		pcall(protect_gui, gui)
+	end
 end
 
 local guiParent = getHiddenParent()
 
--- ========== ASSETS ==========
+-- ========== ÍCONES INTERNOS (só os que a lib usa) ==========
 local LOGO = "rbxassetid://95488570464344"
 
--- Ícones usados pela própria lib (os do Hub vão em GodLib.Icons)
-local BuiltinIcons = {
+local INTERNAL_ICONS = {
 	["sun"] = "rbxassetid://10734974297",
 	["settings"] = "rbxassetid://10734950309",
 	["sword"] = "rbxassetid://10734975486",
-	["map"] = "rbxassetid://10734886202",
-	["puzzle"] = "rbxassetid://10734930886",
 	["sliders-horizontal"] = "rbxassetid://10734963191",
 	["user"] = "rbxassetid://10747373176",
 	["charge"] = "rbxassetid://10709790202",
 	["target"] = "rbxassetid://10734977012",
 	["box"] = "rbxassetid://10709782497",
+	["minus"] = "rbxassetid://10734896206",
 	["maximize"] = "rbxassetid://10734886735",
 	["minimize"] = "rbxassetid://10734895698",
 	["x"] = "rbxassetid://10747384394",
+	["x-circle"] = "rbxassetid://10747383819",
 	["chevron-down"] = "rbxassetid://10709790948",
 	["check"] = "rbxassetid://10709790644",
+	["check-circle"] = "rbxassetid://10709790387",
 	["keyboard"] = "rbxassetid://10723416765",
 	["info"] = "rbxassetid://10723415903",
 	["list"] = "rbxassetid://10723433811",
@@ -927,82 +935,41 @@ local BuiltinIcons = {
 	["mouse-pointer-click"] = "rbxassetid://10734898355",
 	["scale"] = "rbxassetid://10734941912",
 	["toggle-right"] = "rbxassetid://10734985040",
-	["webhook"] = "rbxassetid://10734950813",
-	["send"] = "rbxassetid://10734943902",
-	["bell"] = "rbxassetid://10709775704",
 	["alert-triangle"] = "rbxassetid://10709753149",
-	["check-circle"] = "rbxassetid://10709790387",
-	["x-circle"] = "rbxassetid://10747383819",
-	["flame"] = "rbxassetid://10723376114",
-	["crosshair"] = "rbxassetid://10709818534",
-	["eye"] = "rbxassetid://10723346959",
-	["eye-off"] = "rbxassetid://10723346871",
-	["lock"] = "rbxassetid://10723434711",
-	["zap"] = "rbxassetid://10734975486",
-	["refresh"] = "rbxassetid://10734933222",
-	["save"] = "rbxassetid://10734941499",
 	["download"] = "rbxassetid://10723344270",
 	["upload"] = "rbxassetid://10747366434",
-	["search"] = "rbxassetid://10734943674",
-	["plus"] = "rbxassetid://10734924532",
-	["trash"] = "rbxassetid://10747362393",
-	["code"] = "rbxassetid://10709810463",
-	["terminal"] = "rbxassetid://10734982144",
-	["cpu"] = "rbxassetid://10709813383",
-	["wifi"] = "rbxassetid://10747382504",
-	["globe"] = "rbxassetid://10723404337",
-	["rocket"] = "rbxassetid://10734934585",
-	["bug"] = "rbxassetid://10709782845",
-	["clock"] = "rbxassetid://10709805144",
-	["folder"] = "rbxassetid://10723387563",
-	["file"] = "rbxassetid://10723374641",
-	["hash"] = "rbxassetid://10723405975",
-	["layers"] = "rbxassetid://10723424505",
-	["grid"] = "rbxassetid://10723404936",
-	["power"] = "rbxassetid://10734930466",
-	["camera"] = "rbxassetid://10709789686",
-	["music"] = "rbxassetid://10734905958",
-	["play"] = "rbxassetid://10734923549",
-	["pause"] = "rbxassetid://10734919336",
-	["star"] = "rbxassetid://10734966248",
-	["heart"] = "rbxassetid://10723406885",
-	["gem"] = "rbxassetid://10723396000",
-	["crown"] = "rbxassetid://10709818626",
-	["gift"] = "rbxassetid://10723396402",
-	["tag"] = "rbxassetid://10734976528",
-	["bookmark"] = "rbxassetid://10709782154",
-	["flag"] = "rbxassetid://10723375890",
-	["monitor"] = "rbxassetid://10734896881",
-	["smartphone"] = "rbxassetid://10734963940",
-	["database"] = "rbxassetid://10709818996",
-	["server"] = "rbxassetid://10734949856",
-	["key"] = "rbxassetid://10723416652",
-	["fingerprint"] = "rbxassetid://10723375250",
-	["package"] = "rbxassetid://10734909540",
-	["expand"] = "rbxassetid://10723346553",
-	["shrink"] = "rbxassetid://10734953073",
-	["minus"] = "rbxassetid://10734896206",
-	["mail"] = "rbxassetid://10734885430",
+	["save"] = "rbxassetid://10734941499",
+	["folder-open"] = "rbxassetid://10723386277",
 	["link"] = "rbxassetid://10723426722",
-	["copy"] = "rbxassetid://10709812159",
-	["edit"] = "rbxassetid://10734883598",
-	["home"] = "rbxassetid://10723407389",
-	["users"] = "rbxassetid://10747373426",
+	["globe"] = "rbxassetid://10723404337",
+	["terminal"] = "rbxassetid://10734982144",
+	["trash"] = "rbxassetid://10747362393",
+	["refresh-cw"] = "rbxassetid://10734933222",
+	["send"] = "rbxassetid://10734943902",
+	["bell"] = "rbxassetid://10709775704",
+	["lock"] = "rbxassetid://10723434711",
+	["eye"] = "rbxassetid://10723346959",
 }
 
--- Resolve ícone: primeiro GodLib.Icons (o do Hub), depois o embutido, depois rbxassetid direto
+local warnedIcons = {}
 local function icon(name)
-	if not name then return BuiltinIcons["sun"] end
-	local custom = GodLib.Icons and GodLib.Icons[name]
-	if custom then return custom end
-	if BuiltinIcons[name] then return BuiltinIcons[name] end
-	if tostring(name):find("rbxassetid") or tostring(name):find("^%d+$") then
-		local digits = tostring(name):match("(%d+)")
-		return "rbxassetid://" .. digits
+	if typeof(name) == "string" then
+		if string.find(name, "^rbxasset") then return name end
+		local id = INTERNAL_ICONS[name]
+		if not id and typeof(GodLib.Icons) == "table" then
+			id = GodLib.Icons[name]
+		end
+		if typeof(id) == "number" then id = "rbxassetid://" .. id end
+		if typeof(id) == "string" then return id end
+		if not warnedIcons[name] then
+			warnedIcons[name] = true
+			log("ícone não encontrado: " .. name)
+		end
 	end
-	return BuiltinIcons["sun"]
+	return INTERNAL_ICONS["sun"]
 end
 
+-- ========== FUNDOS ==========
 local BACKGROUNDS = {
 	"rbxassetid://5595738029",
 	"rbxassetid://4761953158",
@@ -1022,6 +989,7 @@ local BACKGROUNDS = {
 local BG_TRANSPARENCY = 0.2
 local AUTO_BG_TIME = 8
 
+-- ========== CORES E TWEENS ==========
 local GOLD = Color3.fromRGB(255, 196, 0)
 local ORANGE = Color3.fromRGB(255, 120, 0)
 local CREAM = Color3.fromRGB(255, 242, 210)
@@ -1035,21 +1003,38 @@ local OFF = Color3.fromRGB(70, 50, 22)
 local BORDER = Color3.fromRGB(125, 88, 22)
 local FIRE_YELLOW = Color3.fromRGB(255, 244, 150)
 local FIRE_ORANGE = Color3.fromRGB(255, 140, 0)
-local SUCCESS = Color3.fromRGB(80, 220, 120)
-local DANGER = Color3.fromRGB(230, 70, 70)
+local SUCCESS = Color3.fromRGB(110, 230, 120)
+local ERROR_RED = Color3.fromRGB(235, 70, 60)
 
 local FAST = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local FADE = TweenInfo.new(0.5)
 local SIZE_INFO = TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 local SLIDE = TweenInfo.new(0.6, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 
--- ========== HELPERS ==========
+local function tween(obj, info, goal)
+	if not TweenService or not obj then return nil end
+	local ok, t = pcall(function()
+		local tw = TweenService:Create(obj, info, goal)
+		tw:Play()
+		return tw
+	end)
+	return ok and t or nil
+end
+
+local function fadeIn(obj, info)
+	if CAP.canvasGroup then tween(obj, info or FAST, { GroupTransparency = 0 }) end
+end
+
+local function fadeOut(obj, info)
+	if CAP.canvasGroup then tween(obj, info or FAST, { GroupTransparency = 1 }) end
+end
+
+-- ========== HELPERS DE UI ==========
 local function new(className, props)
 	local obj = Instance.new(className)
-	props = props or {}
+	if obj:IsA("GuiObject") then obj.BorderSizePixel = 0 end
 	local parent = props.Parent
 	props.Parent = nil
-	if obj:IsA("GuiObject") then obj.BorderSizePixel = 0 end
 	for k, v in pairs(props) do
 		local ok, err = pcall(function() obj[k] = v end)
 		if not ok then log("propriedade " .. tostring(k) .. " falhou: " .. tostring(err)) end
@@ -1067,26 +1052,8 @@ local function addStroke(obj, color, thickness, transparency)
 		Color = color,
 		Thickness = thickness or 1,
 		Transparency = transparency or 0,
-		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 		Parent = obj,
 	})
-end
-
-local ActiveTweens = {}
-local function tween(obj, info, goal)
-	local ok, t = pcall(function() return TweenService:Create(obj, info, goal) end)
-	if not ok then return nil end
-	t:Play()
-	table.insert(ActiveTweens, t)
-	if #ActiveTweens > 300 then
-		-- limpa tweens já terminados para não acumular memória
-		local alive = {}
-		for _, tw in ipairs(ActiveTweens) do
-			if tw.PlaybackState == Enum.PlaybackState.Playing then table.insert(alive, tw) end
-		end
-		ActiveTweens = alive
-	end
-	return t
 end
 
 local function track(conn)
@@ -1137,37 +1104,110 @@ local function makeGlowBorder(parent, radius, thickness, zIndex)
 		Transparency = 0.75,
 		Thickness = (thickness or 1.5) + 3.5,
 	})
+
 	return frame
 end
 
--- ========== CLEANUP ==========
-function GodLib:Cleanup()
-	for _, c in ipairs(self.Connections) do pcall(function() c:Disconnect() end) end
-	clearTable(self.Connections)
-	for _, t in ipairs(ActiveTweens) do pcall(function() t:Cancel() end) end
-	clearTable(ActiveTweens)
+local function makeDraggable(handle, target, scaleObj, onTap)
+	if not UserInputService then return end
+	local dragging, moved = false, false
+	local dragStart, startPos
+	track(handle.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			moved = false
+			dragStart = input.Position
+			startPos = target.Position
+		end
+	end))
+	track(UserInputService.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			local delta = input.Position - dragStart
+			if delta.Magnitude > 4 then moved = true end
+			local s = scaleObj and scaleObj.Scale or 1
+			delta = delta / s
+			target.Position = UDim2.new(
+				startPos.X.Scale, startPos.X.Offset + delta.X,
+				startPos.Y.Scale, startPos.Y.Offset + delta.Y
+			)
+		end
+	end))
+	track(UserInputService.InputEnded:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+			dragging = false
+			if not moved and onTap then onTap() end
+		end
+	end))
 end
 
--- ========== OPTIONS (estilo Fluent: Options.X:SetValue / :OnChanged) ==========
+-- Fundo animado: o novo entra pela ESQUERDA, o antigo sai pela DIREITA
+local function makeBgHost(parent, radius)
+	local container = new("Frame", {
+		Name = "BgHost",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		ClipsDescendants = true,
+		Parent = parent,
+	})
+	addCorner(container, radius)
+
+	local host = { Container = container, Current = nil }
+
+	function host:Set(index, animate)
+		local id = BACKGROUNDS[index]
+		if not id then return end
+		local old = self.Current
+		local img = new("ImageLabel", {
+			Size = UDim2.fromScale(1, 1),
+			Position = animate and UDim2.fromScale(-1, 0) or UDim2.fromScale(0, 0),
+			BackgroundTransparency = 1,
+			Image = id,
+			ScaleType = Enum.ScaleType.Crop,
+			ImageTransparency = BG_TRANSPARENCY,
+			Parent = container,
+		})
+		self.Current = img
+		if animate and TweenService then
+			tween(img, SLIDE, { Position = UDim2.fromScale(0, 0) })
+			if old then
+				tween(old, SLIDE, { Position = UDim2.fromScale(1, 0) })
+				task.delay(SLIDE.Time + 0.05, function()
+					if old.Parent then old:Destroy() end
+				end)
+			end
+		elseif old then
+			old:Destroy()
+		end
+	end
+
+	return host
+end
+
+-- ========== OPÇÕES ==========
 local Option = {}
 Option.__index = Option
 
-function Option.new(name, default)
-	return setmetatable({ Name = name, Value = default, _listeners = {} }, Option)
+function Option.new(name, defaultValue)
+	local self = setmetatable({}, Option)
+	self.Name = name
+	self.Default = defaultValue
+	self.Value = defaultValue
+	self._listeners = {}
+	return self
 end
 
 function Option:Set(value)
 	if self.Value == value then return end
 	self.Value = value
 	for _, cb in ipairs(self._listeners) do
-		task.spawn(function() safeCall(cb, value) end)
+		task.spawn(function()
+			local ok, err = pcall(cb, value)
+			if not ok then log("callback de " .. self.Name .. ": " .. tostring(err)) end
+		end)
 	end
 end
 
-Option.SetValue = Option.Set
-
 function Option:Get() return self.Value end
-Option.GetValue = Option.Get
 
 function Option:OnChanged(cb)
 	table.insert(self._listeners, cb)
@@ -1187,65 +1227,34 @@ local function registerOption(name, default)
 	return opt
 end
 
--- ========== WEBHOOK DISCORD ==========
-function GodLib:SetWebhook(url)
-	if type(url) ~= "string" or not url:find("discord") then
-		log("webhook inválido")
-		return false
-	end
-	self.Webhook = url
-	return true
-end
+-- Opções que nunca são salvas em arquivo (dados sensíveis)
+local SECRET_OPTIONS = { DiscordWebhook = true }
 
-function GodLib:SendWebhook(payload)
-	if not self.Webhook then log("sem webhook configurado") return false end
-	if not requestFn then log("executor sem suporte a request") return false end
-	local body = type(payload) == "string" and { content = payload } or (payload or {})
-	local ok, res = pcall(function()
-		return requestFn({
-			Url = self.Webhook,
-			Method = "POST",
-			Headers = { ["Content-Type"] = "application/json" },
-			Body = HttpService:JSONEncode(body),
-		})
-	end)
-	if not ok then log("webhook erro: " .. tostring(res)) return false end
-	return true
-end
-
-function GodLib:SendEmbed(title, description, color, fields)
-	return self:SendWebhook({
-		embeds = {{
-			title = title or "GodLib",
-			description = description or "",
-			color = color or 16763904,
-			fields = fields or {},
-			footer = { text = "GodLib v" .. self.Version },
-			timestamp = isoNow(),
-		}},
-	})
-end
-
-function GodLib:SendMessage(text)
-	return self:SendWebhook({ content = tostring(text or "") })
-end
-
--- ========== NOTIFICAÇÕES (v2.4) ==========
+-- ========== NOTIFICAÇÕES ==========
+local NOTIF_STYLE = {
+	info = { color = GOLD, icon = "sun" },
+	success = { color = SUCCESS, icon = "check-circle" },
+	warn = { color = ORANGE, icon = "alert-triangle" },
+	error = { color = ERROR_RED, icon = "x-circle" },
+}
+local MAX_NOTIFS = 5
 local notifContainer
-local NOTIF_W, NOTIF_H = 300, 84
+local activeNotifs = {}
 
--- Ícone padrão da notificação (o dev pode trocar com GodLib.NotifyIcon = "nome" ou um ID)
-GodLib.NotifyIcon = "sun"
+local function randomBg()
+	return BACKGROUNDS[math.random(1, #BACKGROUNDS)]
+end
 
 local function ensureNotifContainer(gui)
 	if notifContainer and notifContainer.Parent == gui then return notifContainer end
+	activeNotifs = {}
 	notifContainer = new("Frame", {
 		Name = "Notifications",
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -12, 0, 12),
-		Size = UDim2.fromOffset(NOTIF_W, 0),
-		BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(300, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundTransparency = 1,
 		ZIndex = 100,
 		Parent = gui,
 	})
@@ -1258,187 +1267,171 @@ local function ensureNotifContainer(gui)
 	return notifContainer
 end
 
--- Fundo aleatório: escolhe um dos BACKGROUNDS da lib
-local function randomBackground()
-	if #BACKGROUNDS == 0 then return nil end
-	return BACKGROUNDS[math.random(1, #BACKGROUNDS)]
-end
-
 function GodLib:Notify(config)
 	if type(config) ~= "table" then return log("Notify: config inválido") end
 	local gui = self._gui
 	if not gui then return log("Notify: nenhuma janela criada") end
-	local container = ensureNotifContainer(gui)
-	local duration = tonumber(config.Duration) or 5
-	local accent = config.Color or GOLD
-	local closed = false
 
-	-- Card
-	local card = new("Frame", {
-		Size = UDim2.fromOffset(NOTIF_W, NOTIF_H),
+	local container = ensureNotifContainer(gui)
+	local style = NOTIF_STYLE[config.Type or "info"] or NOTIF_STYLE.info
+	local duration = math.max(1, tonumber(config.Duration) or 5)
+	local frameClass = CAP.canvasGroup and "CanvasGroup" or "Frame"
+	local alive = true
+
+	if #activeNotifs >= MAX_NOTIFS and activeNotifs[1] then
+		activeNotifs[1]()
+	end
+
+	local card = new(frameClass, {
+		Size = UDim2.new(1, 0, 0, 70),
 		BackgroundColor3 = MENU_BG,
-		BackgroundTransparency = 1,
-		ClipsDescendants = true,
-		ZIndex = 100,
 		Parent = container,
 	})
+	if CAP.canvasGroup then card.GroupTransparency = 1 end
 	addCorner(card, 8)
+	addStroke(card, style.color, 1, 0.35)
 
-	-- Fundo aleatório (com escurecimento para o texto ler bem)
 	local bgImg = new("ImageLabel", {
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
-		Image = randomBackground() or "",
+		Image = randomBg(),
 		ScaleType = Enum.ScaleType.Crop,
-		ImageTransparency = 0.35,
-		ZIndex = 100,
+		ImageTransparency = 0.7,
 		Parent = card,
 	})
 	addCorner(bgImg, 8)
-	new("Frame", {
+
+	local shade = new("Frame", {
 		Size = UDim2.fromScale(1, 1),
 		BackgroundColor3 = DARK,
-		BackgroundTransparency = 0.35,
-		ZIndex = 101,
+		BackgroundTransparency = 0.25,
 		Parent = card,
 	})
+	addCorner(shade, 8)
 
-	-- Quadradinho do ícone (canto superior esquerdo)
-	local iconBox = new("Frame", {
-		Position = UDim2.fromOffset(10, 10),
-		Size = UDim2.fromOffset(30, 30),
-		BackgroundColor3 = INNER,
-		ZIndex = 103,
-		Parent = card,
-	})
-	addCorner(iconBox, 6)
-	addStroke(iconBox, accent, 1.2, 0.2)
 	new("ImageLabel", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(18, 18),
 		BackgroundTransparency = 1,
-		Image = icon(config.Icon or GodLib.NotifyIcon),
-		ImageColor3 = accent,
-		ZIndex = 104,
-		Parent = iconBox,
+		Position = UDim2.fromOffset(10, 10),
+		Size = UDim2.fromOffset(18, 18),
+		Image = icon(config.Icon or style.icon),
+		ImageColor3 = style.color,
+		Parent = card,
 	})
 
-	-- Título
 	new("TextLabel", {
 		BackgroundTransparency = 1,
-		Position = UDim2.fromOffset(48, 10),
-		Size = UDim2.new(1, -86, 0, 16),
+		Position = UDim2.fromOffset(36, 8),
+		Size = UDim2.new(1, -70, 0, 18),
 		Font = Enum.Font.GothamBold,
 		TextSize = 13,
-		TextColor3 = accent,
+		TextColor3 = style.color,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		Text = config.Title or "Notificação",
-		ZIndex = 103,
 		Parent = card,
 	})
 
-	-- Conteúdo
+	local closeBtn = new("ImageButton", {
+		BackgroundTransparency = 1,
+		AutoButtonColor = false,
+		Position = UDim2.new(1, -26, 0, 10),
+		Size = UDim2.fromOffset(16, 16),
+		Image = icon("x"),
+		ImageColor3 = MUTED,
+		Parent = card,
+	})
+
 	new("TextLabel", {
 		BackgroundTransparency = 1,
-		Position = UDim2.fromOffset(48, 28),
-		Size = UDim2.new(1, -86, 0, 28),
+		Position = UDim2.fromOffset(36, 28),
+		Size = UDim2.new(1, -46, 0, 30),
 		Font = Enum.Font.Gotham,
 		TextSize = 11,
 		TextColor3 = CREAM,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextYAlignment = Enum.TextYAlignment.Top,
 		TextWrapped = true,
-		Text = (config.Content or "") .. (config.SubContent and ("\n" .. config.SubContent) or ""),
-		ZIndex = 103,
+		Text = config.Content or "",
 		Parent = card,
 	})
 
-	-- Botão fechar (X)
-	local closeBtn = new("ImageButton", {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -8, 0, 8),
-		Size = UDim2.fromOffset(14, 14),
+	local track_ = new("Frame", {
+		Position = UDim2.new(0, 10, 1, -14),
+		Size = UDim2.new(1, -62, 0, 4),
+		BackgroundColor3 = OFF,
+		Parent = card,
+	})
+	addCorner(track_, 2)
+	local fill = new("Frame", {
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = style.color,
+		Parent = track_,
+	})
+	addCorner(fill, 2)
+
+	local countdown = new("TextLabel", {
 		BackgroundTransparency = 1,
-		Image = icon("x"),
-		ImageColor3 = CREAM,
-		ZIndex = 104,
-		Parent = card,
-	})
-
-	-- Contador de tempo (na frente da barra, canto inferior direito)
-	local timerLabel = new("TextLabel", {
-		AnchorPoint = Vector2.new(1, 1),
-		Position = UDim2.new(1, -8, 1, -8),
+		Position = UDim2.new(1, -48, 1, -19),
 		Size = UDim2.fromOffset(40, 12),
-		BackgroundTransparency = 1,
-		Font = Enum.Font.GothamBold,
+		Font = Enum.Font.GothamMedium,
 		TextSize = 10,
 		TextColor3 = CREAM,
-		TextXAlignment = Enum.TextXAlignment.Right,
-		Text = tostring(math.ceil(duration)) .. "s",
-		ZIndex = 104,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Text = tostring(duration) .. "s",
 		Parent = card,
 	})
 
-	-- Barra de progresso (embaixo)
-	local barBg = new("Frame", {
-		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 0, 1, 0),
-		Size = UDim2.new(1, 0, 0, 3),
-		BackgroundColor3 = OFF,
-		BackgroundTransparency = 0.3,
-		ZIndex = 103,
-		Parent = card,
-	})
-	local barFill = new("Frame", {
-		Size = UDim2.fromScale(1, 1),
-		BackgroundColor3 = accent,
-		ZIndex = 104,
-		Parent = barBg,
-	})
+	local fillTween = tween(fill, TweenInfo.new(duration, Enum.EasingStyle.Linear), { Size = UDim2.new(0, 0, 1, 0) })
 
-	local function close()
-		if closed then return end
-		closed = true
-		tween(card, FAST, { BackgroundTransparency = 1 })
-		task.delay(FAST.Time, function()
+	local dismissFn
+	dismissFn = function()
+		if not alive then return end
+		alive = false
+		if fillTween then pcall(function() fillTween:Cancel() end) end
+		for i, d in ipairs(activeNotifs) do
+			if d == dismissFn then table.remove(activeNotifs, i) break end
+		end
+		fadeOut(card, FAST)
+		task.delay(0.2, function()
 			if card.Parent then card:Destroy() end
 		end)
 	end
-	closeBtn.MouseButton1Click:Connect(close)
+	table.insert(activeNotifs, dismissFn)
 
-	-- Animação de entrada
-	card.Position = UDim2.fromOffset(40, 0)
-	tween(card, FAST, { BackgroundTransparency = 0.05 })
+	closeBtn.MouseEnter:Connect(function() tween(closeBtn, FAST, { ImageColor3 = CREAM }) end)
+	closeBtn.MouseLeave:Connect(function() tween(closeBtn, FAST, { ImageColor3 = MUTED }) end)
+	closeBtn.MouseButton1Click:Connect(dismissFn)
 
-	-- Barra + contador
-	local startT = os.clock()
+	fadeIn(card, FAST)
+
 	task.spawn(function()
-		while not closed and card.Parent do
-			local elapsed = os.clock() - startT
-			local remain = duration - elapsed
+		local startT = os.clock()
+		while alive and card.Parent do
+			local remain = duration - (os.clock() - startT)
 			if remain <= 0 then break end
-			barFill.Size = UDim2.fromScale(remain / duration, 1)
-			timerLabel.Text = tostring(math.ceil(remain)) .. "s"
-			task.wait(0.1)
+			countdown.Text = tostring(math.ceil(remain)) .. "s"
+			task.wait(0.2)
 		end
-		close()
+		if alive then dismissFn() end
 	end)
 end
 
-function GodLib:NotifySuccess(title, content, duration)
-	self:Notify({ Title = title or "Sucesso", Content = content or "", Duration = duration or 4, Color = SUCCESS })
+function GodLib:NotifyInfo(title, content, duration)
+	self:Notify({ Type = "info", Title = title or "Info", Content = content or "", Duration = duration or 4 })
 end
 
-function GodLib:NotifyError(title, content, duration)
-	self:Notify({ Title = title or "Erro", Content = content or "", Duration = duration or 5, Color = DANGER })
+function GodLib:NotifySuccess(title, content, duration)
+	self:Notify({ Type = "success", Title = title or "Sucesso", Content = content or "", Duration = duration or 4 })
 end
 
 function GodLib:NotifyWarn(title, content, duration)
-	self:Notify({ Title = title or "Aviso", Content = content or "", Duration = duration or 4 })
+	self:Notify({ Type = "warn", Title = title or "Aviso", Content = content or "", Duration = duration or 4 })
 end
+
+function GodLib:NotifyError(title, content, duration)
+	self:Notify({ Type = "error", Title = title or "Erro", Content = content or "", Duration = duration or 5 })
+end
+
 -- ========== DIALOG ==========
 function GodLib:Dialog(config)
 	if type(config) ~= "table" then return log("Dialog: config inválido") end
@@ -1470,7 +1463,6 @@ function GodLib:Dialog(config)
 
 	local function close()
 		tween(overlay, FAST, { BackgroundTransparency = 1 })
-		tween(box, FAST, { BackgroundTransparency = 1 })
 		task.delay(FAST.Time, function() if overlay.Parent then overlay:Destroy() end end)
 	end
 
@@ -1546,12 +1538,19 @@ function GodLib:Dialog(config)
 		b.MouseLeave:Connect(function() tween(b, FAST, { BackgroundColor3 = INNER }) end)
 		b.MouseButton1Click:Connect(function()
 			close()
-			safeCall(btn.Callback)
+			if btn.Callback then
+				local ok, err = pcall(btn.Callback)
+				if not ok then log("Dialog callback: " .. tostring(err)) end
+			end
 		end)
 	end
 
-	tween(overlay, FADE, { BackgroundTransparency = 0.5 })
+	task.defer(function()
+		tween(overlay, FADE, { BackgroundTransparency = 0.5 })
+	end)
 end
+
+GodLib.AddDialog = GodLib.Dialog
 
 function GodLib:GetOption(name)
 	local opt = self.Options[name]
@@ -1562,6 +1561,15 @@ end
 function GodLib:SetOption(name, value)
 	local opt = self:GetOption(name)
 	if opt then opt:Set(value) end
+end
+
+function GodLib:ResetOption(name)
+	local opt = self.Options[name]
+	if opt then opt:Set(opt.Default) end
+end
+
+function GodLib:ResetOptions()
+	for _, opt in pairs(self.Options) do opt:Set(opt.Default) end
 end
 
 -- ========== TAB / CONTROLES ==========
@@ -1661,25 +1669,15 @@ function Tab:AddSection(name)
 	return section
 end
 
-Tab.AddSector = Tab.AddSection
-
 function Tab:AddDivider()
-	return new("Frame", {
+	local line = new("Frame", {
 		LayoutOrder = self:_nextOrder(),
 		Size = UDim2.new(1, -8, 0, 1),
 		BackgroundColor3 = BORDER,
 		BackgroundTransparency = 0.3,
 		Parent = self._list,
 	})
-end
-
-function Tab:AddSpacer(height)
-	return new("Frame", {
-		LayoutOrder = self:_nextOrder(),
-		Size = UDim2.new(1, -8, 0, height or 8),
-		BackgroundTransparency = 1,
-		Parent = self._list,
-	})
+	return line
 end
 
 function Tab:AddParagraph(config)
@@ -1772,7 +1770,7 @@ function Tab:AddButton(name, config)
 		AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.new(0, 8, 0.5, 0),
 		Size = UDim2.fromOffset(14, 14),
-		Image = icon(config.ButtonIcon or "mouse-pointer-click"),
+		Image = icon("mouse-pointer-click"),
 		ImageColor3 = GOLD,
 		Parent = b,
 	})
@@ -1790,7 +1788,12 @@ function Tab:AddButton(name, config)
 
 	b.MouseEnter:Connect(function() tween(b, FAST, { BackgroundColor3 = HOVER }) end)
 	b.MouseLeave:Connect(function() tween(b, FAST, { BackgroundColor3 = INNER }) end)
-	b.MouseButton1Click:Connect(function() safeCall(config.Callback) end)
+	b.MouseButton1Click:Connect(function()
+		if config.Callback then
+			local ok, err = pcall(config.Callback)
+			if not ok then log("Button " .. tostring(name) .. ": " .. tostring(err)) end
+		end
+	end)
 	return b
 end
 
@@ -1819,7 +1822,7 @@ function Tab:AddToggle(name, config)
 
 	local function render(instant)
 		local info = TweenInfo.new(instant and 0 or 0.15)
-		local on = opt.Value
+		local on = opt.Value == true
 		tween(toggleTrack, info, { BackgroundColor3 = on and GOLD or OFF })
 		tween(knob, info, { Position = on and UDim2.new(1, -10, 0.5, 0) or UDim2.new(0, 10, 0.5, 0) })
 	end
@@ -1828,7 +1831,10 @@ function Tab:AddToggle(name, config)
 	toggleTrack.MouseButton1Click:Connect(function()
 		opt:Set(not opt.Value)
 		render(false)
-		safeCall(config.Callback, opt.Value)
+		if config.Callback then
+			local ok, err = pcall(config.Callback, opt.Value)
+			if not ok then log("Toggle " .. tostring(name) .. ": " .. tostring(err)) end
+		end
 	end)
 
 	opt:OnChanged(function() render(false) end)
@@ -1839,7 +1845,7 @@ function Tab:AddToggle(name, config)
 			if input.KeyCode == config.Keybind then
 				opt:Set(not opt.Value)
 				render(false)
-				safeCall(config.Callback, opt.Value)
+				if config.Callback then pcall(config.Callback, opt.Value) end
 			end
 		end))
 	end
@@ -1849,13 +1855,17 @@ end
 
 function Tab:AddSlider(name, config)
 	config = config or {}
-	local minV = config.Min or 0
-	local maxV = config.Max or 100
-	local defV = config.Default or minV
+	local minV = tonumber(config.Min) or 0
+	local maxV = tonumber(config.Max) or 100
+	local defV = tonumber(config.Default) or minV
 	local rounding = config.Rounding or 0
 	local prefix = config.Prefix or ""
 	local suffix = config.Suffix or ""
-	if minV >= maxV then maxV = minV + 1 end
+
+	if minV >= maxV then
+		log("slider " .. tostring(name) .. ": Min >= Max, corrigindo")
+		maxV = minV + 1
+	end
 
 	local row = makeRow(self._list, self:_nextOrder(), config.Icon or "charge", config.Title or name, config.Description or "")
 	local opt = registerOption(name, defV)
@@ -1907,13 +1917,16 @@ function Tab:AddSlider(name, config)
 	})
 
 	local function applyValue(v, silent)
-		local p = (v - minV) / (maxV - minV)
+		local p = math.clamp((v - minV) / (maxV - minV), 0, 1)
 		fill.Size = UDim2.new(p, 0, 1, 0)
 		knob.Position = UDim2.new(p, 0, 0.5, 0)
 		valueLabel.Text = prefix .. tostring(v) .. suffix
 		if not silent then
 			opt:Set(v)
-			safeCall(config.Callback, v)
+			if config.Callback then
+				local ok, err = pcall(config.Callback, v)
+				if not ok then log("Slider " .. tostring(name) .. ": " .. tostring(err)) end
+			end
 		end
 	end
 
@@ -1921,7 +1934,8 @@ function Tab:AddSlider(name, config)
 		local p = math.clamp((x - sliderTrack.AbsolutePosition.X) / math.max(1, sliderTrack.AbsoluteSize.X), 0, 1)
 		local raw = minV + p * (maxV - minV)
 		local mult = 10 ^ rounding
-		local v = math.clamp(math.floor(raw * mult + 0.5) / mult, minV, maxV)
+		local v = math.floor(raw * mult + 0.5) / mult
+		v = math.clamp(v, minV, maxV)
 		applyValue(v)
 	end
 
@@ -1943,11 +1957,15 @@ function Tab:AddSlider(name, config)
 		end
 	end))
 
-	applyValue(opt.Value, true)
+	opt:OnChanged(function(v)
+		if type(v) == "number" then applyValue(v, true) end
+	end)
+
+	applyValue(tonumber(opt.Value) or defV, true)
 	return opt
 end
 
--- ========== DROPDOWN (multi, stroke, imagens à esquerda, fecha ao sair) ==========
+-- DROPDOWN (única escolha e multi-seleção)
 function Tab:AddDropdown(name, config)
 	config = config or {}
 	local options = config.Values or {}
@@ -1958,7 +1976,8 @@ function Tab:AddDropdown(name, config)
 		local map = {}
 		if type(default) == "table" then
 			for k, v in pairs(default) do
-				if type(k) == "number" then map[v] = true elseif v then map[k] = true end
+				if type(k) == "number" then map[v] = true
+				elseif v then map[k] = true end
 			end
 		end
 		default = map
@@ -1981,8 +2000,12 @@ function Tab:AddDropdown(name, config)
 	addCorner(btn, 6)
 	local btnStroke = addStroke(btn, GOLD, 1.5, 0.1)
 
+	local function valueSet()
+		return type(opt.Value) == "table" and opt.Value or {}
+	end
+
 	local function isSelected(o)
-		if isMulti then return opt.Value[o] == true end
+		if isMulti then return valueSet()[o] == true end
 		return opt.Value == o
 	end
 
@@ -1990,7 +2013,7 @@ function Tab:AddDropdown(name, config)
 		if isMulti then
 			local t = {}
 			for _, o in ipairs(options) do
-				if opt.Value[o] then table.insert(t, tostring(o)) end
+				if valueSet()[o] then table.insert(t, tostring(o)) end
 			end
 			return #t > 0 and table.concat(t, ", ") or "Nenhum"
 		end
@@ -2023,16 +2046,8 @@ function Tab:AddDropdown(name, config)
 	btn.MouseEnter:Connect(function() tween(btn, FAST, { BackgroundColor3 = HOVER }) end)
 	btn.MouseLeave:Connect(function() tween(btn, FAST, { BackgroundColor3 = INNER }) end)
 
-	local function closePopup()
-		if winRef._closePopup then
-			local fn = winRef._closePopup
-			winRef._closePopup = nil
-			fn()
-		end
-	end
-
 	btn.MouseButton1Click:Connect(function()
-		closePopup()
+		winRef:_closePopupNow()
 		local overlay = winRef._overlay
 		local k = winRef._uiScale.Scale
 		local function px(n) return math.max(1, math.floor(n * k + 0.5)) end
@@ -2040,44 +2055,53 @@ function Tab:AddDropdown(name, config)
 		local origin = overlay.AbsolutePosition
 		local bp = btn.AbsolutePosition
 		local bs = btn.AbsoluteSize
-		local hasImg = config.ImageOf ~= nil
-		local itemH = px(hasImg and 30 or 26)
-		local pad = px(5)
-		local gap = px(2)
+		local itemH, pad, gap = px(26), px(5), px(2)
 		local menuW = px(config.MenuWidth or 150)
-		local fullH = math.max(1, #options) * itemH + pad * 2 + math.max(0, #options - 1) * gap
+		local hasThumb = type(config.ImageOf) == "function"
+		local count = math.max(1, #options)
+		local fullH = count * itemH + pad * 2 + (count - 1) * gap
 		local menuH = math.min(fullH, overlay.AbsoluteSize.Y - px(16))
+
 		local x = bp.X - origin.X + bs.X - menuW
-		x = math.max(px(4), math.min(x, overlay.AbsoluteSize.X - menuW - px(4)))
+		x = math.clamp(x, px(4), math.max(px(4), overlay.AbsoluteSize.X - menuW - px(4)))
 		local y = bp.Y - origin.Y + bs.Y + px(6)
-		if bp.Y + bs.Y + px(6) + menuH > origin.Y + overlay.AbsoluteSize.Y - px(8) then
+		if y + menuH > overlay.AbsoluteSize.Y - px(8) then
 			y = bp.Y - origin.Y - menuH - px(6)
 		end
+		y = math.max(px(4), y)
 
 		local catcher = new("TextButton", {
 			Size = UDim2.fromScale(1, 1),
 			BackgroundTransparency = 1,
 			AutoButtonColor = false,
 			Text = "",
-			ZIndex = 20,
 			Parent = overlay,
 		})
 
-		local menu = new("CanvasGroup", {
+		local menuProps = {
 			Position = UDim2.fromOffset(x, y - px(6)),
 			Size = UDim2.fromOffset(menuW, menuH),
 			BackgroundColor3 = MENU_BG,
-			GroupTransparency = 1,
-			ZIndex = 21,
 			Parent = overlay,
-		})
+		}
+		if CAP.canvasGroup then menuProps.GroupTransparency = 1 end
+		local menu = new(CAP.canvasGroup and "CanvasGroup" or "Frame", menuProps)
 		addCorner(menu, px(7))
+
+		local menuBg = new("ImageLabel", {
+			Size = UDim2.fromScale(1, 1),
+			BackgroundTransparency = 1,
+			Image = BACKGROUNDS[winRef._bgIndex] or "",
+			ScaleType = Enum.ScaleType.Crop,
+			ImageTransparency = BG_TRANSPARENCY,
+			Parent = menu,
+		})
+		addCorner(menuBg, px(7))
 
 		local menuShade = new("Frame", {
 			Size = UDim2.fromScale(1, 1),
 			BackgroundColor3 = DARK,
 			BackgroundTransparency = 0.4,
-			ZIndex = 21,
 			Parent = menu,
 		})
 		addCorner(menuShade, px(7))
@@ -2089,7 +2113,6 @@ function Tab:AddDropdown(name, config)
 			ScrollBarImageColor3 = GOLD,
 			CanvasSize = UDim2.new(0, 0, 0, 0),
 			AutomaticCanvasSize = Enum.AutomaticSize.Y,
-			ZIndex = 22,
 			Parent = menu,
 		})
 		new("UIListLayout", { Padding = UDim.new(0, gap), SortOrder = Enum.SortOrder.LayoutOrder, Parent = scroll })
@@ -2100,12 +2123,21 @@ function Tab:AddDropdown(name, config)
 		})
 
 		local items = {}
+
 		local function refresh()
 			for _, it in ipairs(items) do
 				local sel = isSelected(it.o)
 				it.frame.BackgroundTransparency = sel and 0.8 or 1
 				it.frame.TextColor3 = sel and GOLD or CREAM
 				it.check.Visible = sel
+			end
+		end
+
+		local function closeMenu()
+			if winRef._closePopup then
+				local fn = winRef._closePopup
+				winRef._closePopup = nil
+				fn()
 			end
 		end
 
@@ -2120,28 +2152,26 @@ function Tab:AddDropdown(name, config)
 				TextSize = px(12),
 				TextColor3 = CREAM,
 				TextXAlignment = Enum.TextXAlignment.Left,
-				TextTruncate = Enum.TextTruncate.AtEnd,
+				TextYAlignment = Enum.TextYAlignment.Center,
 				Text = tostring(o),
-				ZIndex = 23,
 				Parent = scroll,
 			})
 			addCorner(item, px(5))
 			new("UIPadding", {
-				PaddingLeft = UDim.new(0, hasImg and px(36) or px(9)),
-				PaddingRight = UDim.new(0, px(24)),
+				PaddingLeft = UDim.new(0, hasThumb and px(32) or px(9)),
 				Parent = item,
 			})
 
-			if hasImg then
+			if hasThumb then
 				local img = config.ImageOf(o)
 				local th = new("ImageLabel", {
 					AnchorPoint = Vector2.new(0, 0.5),
-					Position = UDim2.new(0, px(4), 0.5, 0),
-					Size = UDim2.fromOffset(px(24), px(24)),
+					Position = UDim2.new(0, px(3), 0.5, 0),
+					Size = UDim2.fromOffset(px(22), px(22)),
 					BackgroundTransparency = 1,
 					Image = img or "",
 					ScaleType = Enum.ScaleType.Crop,
-					ZIndex = 24,
+					ZIndex = item.ZIndex + 1,
 					Parent = item,
 				})
 				addCorner(th, px(4))
@@ -2155,7 +2185,6 @@ function Tab:AddDropdown(name, config)
 				Image = icon("check"),
 				ImageColor3 = GOLD,
 				Visible = false,
-				ZIndex = 24,
 				Parent = item,
 			})
 
@@ -2171,48 +2200,51 @@ function Tab:AddDropdown(name, config)
 			item.MouseButton1Click:Connect(function()
 				if isMulti then
 					local newVal = {}
-					for k2, v2 in pairs(opt.Value) do newVal[k2] = v2 end
+					for k2, v2 in pairs(valueSet()) do newVal[k2] = v2 end
 					if newVal[o] then newVal[o] = nil else newVal[o] = true end
 					opt:Set(newVal)
 					refresh()
-					safeCall(config.Callback, newVal)
+					if config.Callback then
+						local ok, err = pcall(config.Callback, newVal)
+						if not ok then log("Dropdown " .. tostring(name) .. ": " .. tostring(err)) end
+					end
 				else
 					opt:Set(o)
-					closePopup()
-					safeCall(config.Callback, o)
+					closeMenu()
+					if config.Callback then
+						local ok, err = pcall(config.Callback, o)
+						if not ok then log("Dropdown " .. tostring(name) .. ": " .. tostring(err)) end
+					end
 				end
 			end)
 		end
 
 		refresh()
-		makeGlowBorder(menu, px(7), 1.5, 25)
-		tween(menu, FAST, { GroupTransparency = 0 })
+		makeGlowBorder(menu, px(7), 1.5, 5)
+		fadeIn(menu, FAST)
 		tween(menu, FAST, { Position = UDim2.fromOffset(x, y) })
 		tween(chevron, FAST, { Rotation = 180 })
 		tween(btnStroke, FAST, { Transparency = 0 })
 
 		winRef._closePopup = function()
-			if catcher.Parent then catcher:Destroy() end
-			tween(menu, FAST, { GroupTransparency = 1 })
+			catcher:Destroy()
+			fadeOut(menu, FAST)
 			tween(chevron, FAST, { Rotation = 0 })
 			tween(btnStroke, FAST, { Transparency = 0.1 })
 			task.delay(FAST.Time, function() if menu.Parent then menu:Destroy() end end)
 		end
-		catcher.MouseButton1Click:Connect(closePopup)
+		catcher.MouseButton1Click:Connect(closeMenu)
 	end)
 
 	opt:OnChanged(function() label.Text = displayText() end)
 	return opt
 end
 
--- Aliases estilo Fluent
 function Tab:AddMultiDropdown(name, config)
 	config = config or {}
 	config.Multi = true
 	return self:AddDropdown(name, config)
 end
-
-function Tab:AddSelect(name, config) return self:AddDropdown(name, config) end
 
 function Tab:AddKeybind(name, config)
 	config = config or {}
@@ -2247,7 +2279,6 @@ function Tab:AddKeybind(name, config)
 			if processed then return end
 			if input.UserInputType == Enum.UserInputType.Keyboard then
 				opt:Set(input.KeyCode)
-				btn.Text = input.KeyCode.Name
 				listening = false
 				conn:Disconnect()
 			end
@@ -2259,9 +2290,13 @@ function Tab:AddKeybind(name, config)
 	if config.Callback then
 		track(UserInputService.InputBegan:Connect(function(input, processed)
 			if processed then return end
-			if input.KeyCode == opt.Value then safeCall(config.Callback, opt.Value) end
+			if input.KeyCode == opt.Value then
+				local ok, err = pcall(config.Callback, opt.Value)
+				if not ok then log("Keybind " .. tostring(name) .. ": " .. tostring(err)) end
+			end
 		end))
 	end
+
 	return opt
 end
 
@@ -2295,44 +2330,56 @@ function Tab:AddInput(name, config)
 	})
 	new("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 6), Parent = tb })
 
+	opt:OnChanged(function(v) tb.Text = tostring(v) end)
+
 	tb.FocusLost:Connect(function()
 		local txt = tb.Text
 		if config.Numeric then
 			local n = tonumber(txt)
-			if n then opt:Set(n) else tb.Text = tostring(opt.Value) end
+			if n then
+				opt:Set(n)
+			else
+				tb.Text = tostring(opt.Value)
+				log("Input " .. tostring(name) .. ": valor numérico inválido")
+			end
 		else
 			opt:Set(txt)
 		end
-		safeCall(config.Callback, opt.Value)
+		if config.Callback then pcall(config.Callback, opt.Value) end
 	end)
+
 	return opt
 end
 
--- ColorPicker HSV (sem vazamento de conexões)
+Tab.AddTextbox = Tab.AddInput
+
 function Tab:AddColorPicker(name, config)
 	config = config or {}
 	local opt = registerOption(name, config.Default or Color3.fromRGB(255, 200, 0))
 	local row = makeRow(self._list, self:_nextOrder(), config.Icon or "palette", config.Title or name, config.Description or "")
 	local winRef = self._window
 
+	local function currentColor()
+		return typeof(opt.Value) == "Color3" and opt.Value or Color3.fromRGB(255, 200, 0)
+	end
+
 	local swatch = new("TextButton", {
 		Position = UDim2.new(1, -46, 0.5, -9),
 		Size = UDim2.fromOffset(40, 18),
-		BackgroundColor3 = opt.Value,
+		BackgroundColor3 = currentColor(),
 		AutoButtonColor = false,
 		Text = "",
 		Parent = row,
 	})
 	addCorner(swatch, 4)
 	addStroke(swatch, GOLD, 1.5, 0.1)
-	opt:OnChanged(function(v) swatch.BackgroundColor3 = v end)
+
+	opt:OnChanged(function(v)
+		if typeof(v) == "Color3" then swatch.BackgroundColor3 = v end
+	end)
 
 	swatch.MouseButton1Click:Connect(function()
-		if winRef._closePopup then
-			local fn = winRef._closePopup
-			winRef._closePopup = nil
-			fn()
-		end
+		winRef:_closePopupNow()
 		local overlay = winRef._overlay
 		local k = winRef._uiScale.Scale
 		local function px(n) return math.max(1, math.floor(n * k + 0.5)) end
@@ -2340,53 +2387,57 @@ function Tab:AddColorPicker(name, config)
 		local origin = overlay.AbsolutePosition
 		local bp = swatch.AbsolutePosition
 		local bs = swatch.AbsoluteSize
-		local menuW, menuH = px(200), px(170)
+		local menuW = px(200)
+		local menuH = px(170)
 		local x = bp.X - origin.X + bs.X - menuW
+		x = math.clamp(x, px(4), math.max(px(4), overlay.AbsoluteSize.X - menuW - px(4)))
 		local y = bp.Y - origin.Y + bs.Y + px(6)
+		if y + menuH > overlay.AbsoluteSize.Y - px(8) then
+			y = bp.Y - origin.Y - menuH - px(6)
+		end
+		y = math.max(px(4), y)
 
 		local catcher = new("TextButton", {
 			Size = UDim2.fromScale(1, 1),
 			BackgroundTransparency = 1,
 			AutoButtonColor = false,
 			Text = "",
-			ZIndex = 20,
 			Parent = overlay,
 		})
-		local menu = new("CanvasGroup", {
+
+		local menuProps = {
 			Position = UDim2.fromOffset(x, y - px(6)),
 			Size = UDim2.fromOffset(menuW, menuH),
 			BackgroundColor3 = MENU_BG,
-			GroupTransparency = 1,
-			ZIndex = 21,
 			Parent = overlay,
-		})
+		}
+		if CAP.canvasGroup then menuProps.GroupTransparency = 1 end
+		local menu = new(CAP.canvasGroup and "CanvasGroup" or "Frame", menuProps)
 		addCorner(menu, px(7))
 
 		local preview = new("Frame", {
 			Position = UDim2.fromOffset(px(10), px(10)),
 			Size = UDim2.new(1, -px(20), 0, px(28)),
-			BackgroundColor3 = opt.Value,
-			ZIndex = 22,
+			BackgroundColor3 = currentColor(),
 			Parent = menu,
 		})
 		addCorner(preview, px(5))
+		addStroke(preview, GOLD, 1.5, 0.1)
 
-		local h, s, v = opt.Value:ToHSV()
-		local conns = {}
+		local h, s, v = currentColor():ToHSV()
 
 		local function updateColor()
 			local col = Color3.fromHSV(h, s, v)
 			preview.BackgroundColor3 = col
 			opt:Set(col)
-			safeCall(config.Callback, col)
+			if config.Callback then pcall(config.Callback, col) end
 		end
 
-		local function makeSlider(label, order, value, onChange, gradient)
+		local function makeColorSlider(label, order, value, onChange, gradient)
 			local rowFrame = new("Frame", {
 				Position = UDim2.fromOffset(px(10), px(46) + (order - 1) * px(34)),
 				Size = UDim2.new(1, -px(20), 0, px(28)),
 				BackgroundTransparency = 1,
-				ZIndex = 22,
 				Parent = menu,
 			})
 			new("TextLabel", {
@@ -2397,32 +2448,37 @@ function Tab:AddColorPicker(name, config)
 				TextColor3 = GOLD,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				Text = label,
-				ZIndex = 22,
 				Parent = rowFrame,
 			})
 			local trk = new("Frame", {
 				Position = UDim2.fromOffset(0, px(16)),
 				Size = UDim2.new(1, 0, 0, px(8)),
 				BackgroundColor3 = Color3.fromRGB(50, 50, 50),
-				ZIndex = 22,
 				Parent = rowFrame,
 			})
 			addCorner(trk, px(4))
-			local img = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1), ZIndex = 22, Parent = trk })
+			local img = new("Frame", {
+				Size = UDim2.fromScale(1, 1),
+				BackgroundColor3 = Color3.new(1, 1, 1),
+				Parent = trk,
+			})
 			addCorner(img, px(4))
 			new("UIGradient", { Color = ColorSequence.new(gradient), Parent = img })
+
 			local kn = new("Frame", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				Position = UDim2.new(value, 0, 0.5, 0),
 				Size = UDim2.fromOffset(px(10), px(10)),
 				BackgroundColor3 = CREAM,
-				ZIndex = 23,
 				Parent = trk,
 			})
 			addCorner(kn, px(5))
 			local hit = new("TextButton", {
-				BackgroundTransparency = 1, AutoButtonColor = false,
-				Size = UDim2.fromScale(1, 1), Text = "", ZIndex = 24, Parent = trk,
+				BackgroundTransparency = 1,
+				AutoButtonColor = false,
+				Size = UDim2.fromScale(1, 1),
+				Text = "",
+				Parent = trk,
 			})
 			local dragging = false
 			local function set(x2)
@@ -2432,22 +2488,26 @@ function Tab:AddColorPicker(name, config)
 			end
 			hit.InputBegan:Connect(function(input)
 				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-					dragging = true set(input.Position.X)
+					dragging = true
+					set(input.Position.X)
 				end
 			end)
-			table.insert(conns, UserInputService.InputChanged:Connect(function(input)
+			-- Estas conexões são desconectadas quando o menu fecha
+			local c1 = UserInputService.InputChanged:Connect(function(input)
 				if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 					set(input.Position.X)
 				end
-			end))
-			table.insert(conns, UserInputService.InputEnded:Connect(function(input)
+			end)
+			local c2 = UserInputService.InputEnded:Connect(function(input)
 				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 					dragging = false
 				end
-			end))
+			end)
+			table.insert(winRef._popupConns, c1)
+			table.insert(winRef._popupConns, c2)
 		end
 
-		makeSlider("HUE", 1, h, function(p) h = p updateColor() end, {
+		makeColorSlider("HUE", 1, h, function(p) h = p updateColor() end, {
 			ColorSequenceKeypoint.new(0, Color3.fromHSV(0, 1, 1)),
 			ColorSequenceKeypoint.new(0.17, Color3.fromHSV(0.17, 1, 1)),
 			ColorSequenceKeypoint.new(0.33, Color3.fromHSV(0.33, 1, 1)),
@@ -2456,85 +2516,36 @@ function Tab:AddColorPicker(name, config)
 			ColorSequenceKeypoint.new(0.83, Color3.fromHSV(0.83, 1, 1)),
 			ColorSequenceKeypoint.new(1, Color3.fromHSV(1, 1, 1)),
 		})
-		makeSlider("SATURAÇÃO", 2, s, function(p) s = p updateColor() end, {
+		makeColorSlider("SATURAÇÃO", 2, s, function(p) s = p updateColor() end, {
 			ColorSequenceKeypoint.new(0, Color3.fromHSV(h, 0, v)),
 			ColorSequenceKeypoint.new(1, Color3.fromHSV(h, 1, v)),
 		})
-		makeSlider("VALOR", 3, v, function(p) v = p updateColor() end, {
+		makeColorSlider("VALOR", 3, v, function(p) v = p updateColor() end, {
 			ColorSequenceKeypoint.new(0, Color3.new(0, 0, 0)),
 			ColorSequenceKeypoint.new(1, Color3.fromHSV(h, s, 1)),
 		})
 
-		makeGlowBorder(menu, px(7), 1.5, 25)
-		tween(menu, FAST, { GroupTransparency = 0 })
+		makeGlowBorder(menu, px(7), 1.5, 5)
+		fadeIn(menu, FAST)
 		tween(menu, FAST, { Position = UDim2.fromOffset(x, y) })
 
-		local function close()
-			for _, c in ipairs(conns) do c:Disconnect() end
-			clearTable(conns)
-			if catcher.Parent then catcher:Destroy() end
-			tween(menu, FAST, { GroupTransparency = 1 })
+		winRef._closePopup = function()
+			catcher:Destroy()
+			fadeOut(menu, FAST)
 			task.delay(FAST.Time, function() if menu.Parent then menu:Destroy() end end)
 		end
-		winRef._closePopup = close
-		catcher.MouseButton1Click:Connect(function()
-			if winRef._closePopup == close then winRef._closePopup = nil end
-			close()
-		end)
+		catcher.MouseButton1Click:Connect(function() winRef:_closePopupNow() end)
 	end)
 
 	return opt
 end
 
-Tab.AddColorpicker = Tab.AddColorPicker
-
-function Tab:AddTabBox() log("AddTabBox ainda não implementado") end
+-- Separadores/aliases de compatibilidade
+function Tab:AddTabBox() log("AddTabBox não implementado ainda") end
+function Tab:AddWindow() log("AddWindow em Tab não suportado") end
 
 function Tab:Destroy()
 	if self._page then pcall(function() self._page:Destroy() end) end
-end
-
--- ========== BACKGROUND HOST (novo entra pela esquerda, antigo sai pela direita) ==========
-local function makeBgHost(parent, radius)
-	local container = new("Frame", {
-		Name = "BgHost",
-		Size = UDim2.fromScale(1, 1),
-		BackgroundTransparency = 1,
-		ClipsDescendants = true,
-		Parent = parent,
-	})
-	addCorner(container, radius)
-
-	local host = { Container = container, Current = nil }
-
-	function host:Set(index, animate)
-		local id = BACKGROUNDS[index]
-		if not id then return end
-		local old = self.Current
-		local img = new("ImageLabel", {
-			Size = UDim2.fromScale(1, 1),
-			Position = animate and UDim2.fromScale(-1, 0) or UDim2.fromScale(0, 0),
-			BackgroundTransparency = 1,
-			Image = id,
-			ScaleType = Enum.ScaleType.Crop,
-			ImageTransparency = BG_TRANSPARENCY,
-			ZIndex = 0,
-			Parent = container,
-		})
-		self.Current = img
-		if animate and old and old.Parent then
-			tween(img, SLIDE, { Position = UDim2.fromScale(0, 0) })
-			tween(old, SLIDE, { Position = UDim2.fromScale(1, 0) })
-			task.delay(SLIDE.Time + 0.05, function()
-				if old.Parent then old:Destroy() end
-			end)
-		else
-			if old and old.Parent then old:Destroy() end
-			img.Position = UDim2.fromScale(0, 0)
-		end
-	end
-
-	return host
 end
 
 -- ========== WINDOW ==========
@@ -2545,8 +2556,10 @@ function Window:_closePopupNow()
 	if self._closePopup then
 		local fn = self._closePopup
 		self._closePopup = nil
-		safeCall(fn)
+		pcall(fn)
 	end
+	for _, c in ipairs(self._popupConns) do pcall(function() c:Disconnect() end) end
+	self._popupConns = {}
 end
 
 function Window:_buildPage(name)
@@ -2555,9 +2568,9 @@ function Window:_buildPage(name)
 		Size = UDim2.new(1, -101, 1, -34),
 		BackgroundTransparency = 1,
 		Visible = false,
-		ClipsDescendants = true,
 		Parent = self._window,
 	})
+
 	new("TextLabel", {
 		BackgroundTransparency = 1,
 		Position = UDim2.fromOffset(8, 4),
@@ -2569,8 +2582,18 @@ function Window:_buildPage(name)
 		Text = name,
 		Parent = page,
 	})
-	new("Frame", { Position = UDim2.fromOffset(8, 27), Size = UDim2.new(1, -16, 0, 1), BackgroundColor3 = BORDER, Parent = page })
-	new("Frame", { Position = UDim2.fromOffset(8, 26), Size = UDim2.fromOffset(48, 3), BackgroundColor3 = GOLD, Parent = page })
+	new("Frame", {
+		Position = UDim2.fromOffset(8, 27),
+		Size = UDim2.new(1, -16, 0, 1),
+		BackgroundColor3 = BORDER,
+		Parent = page,
+	})
+	new("Frame", {
+		Position = UDim2.fromOffset(8, 26),
+		Size = UDim2.fromOffset(48, 3),
+		BackgroundColor3 = GOLD,
+		Parent = page,
+	})
 
 	local list = new("ScrollingFrame", {
 		Position = UDim2.fromOffset(4, 34),
@@ -2586,7 +2609,13 @@ function Window:_buildPage(name)
 	new("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder, Parent = list })
 	new("UIPadding", { PaddingLeft = UDim.new(0, 2), PaddingTop = UDim.new(0, 2), Parent = list })
 
-	return setmetatable({ _window = self, _name = name, _page = page, _list = list, _order = 0 }, Tab)
+	return setmetatable({
+		_window = self,
+		_name = name,
+		_page = page,
+		_list = list,
+		_order = 0,
+	}, Tab)
 end
 
 function Window:AddTab(config)
@@ -2643,7 +2672,9 @@ function Window:AddTab(config)
 	table.insert(self._navButtons, { button = button, accent = accent, icon = iconLabel, label = label })
 	table.insert(self._pages, tab._page)
 
-	button.MouseButton1Click:Connect(function() self:SelectTab(index) end)
+	button.MouseButton1Click:Connect(function()
+		self:SelectTab(index)
+	end)
 
 	if #self._tabs == 1 then self:SelectTab(1) end
 	return tab
@@ -2655,28 +2686,29 @@ function Window:SelectTab(index)
 	self._currentIndex = index
 	for i, nb in ipairs(self._navButtons) do
 		local on = (i == index)
-		tween(nb.button, FAST, { BackgroundTransparency = on and 0.8 or 1 })
+		nb.button.Visible = true
+		nb.button.BackgroundTransparency = on and 0.8 or 1
 		nb.accent.Visible = on
 		nb.icon.ImageColor3 = on and GOLD or MUTED
 		nb.label.TextColor3 = on and CREAM or MUTED
 		self._pages[i].Visible = on
 	end
-	self._configTab._page.Visible = false
+	if self._configTab then self._configTab._page.Visible = false end
 end
 
+-- Abre configurações: esconde todas as abas principais
 function Window:OpenConfig()
 	self:_closePopupNow()
 	self._configOpen = true
 	for _, nb in ipairs(self._navButtons) do
-		nb.button.BackgroundTransparency = 1
+		nb.button.Visible = false
 		nb.accent.Visible = false
-		nb.icon.ImageColor3 = MUTED
-		nb.label.TextColor3 = MUTED
 	end
 	for _, p in ipairs(self._pages) do p.Visible = false end
-	self._configTab._page.Visible = true
+	if self._configTab then self._configTab._page.Visible = true end
 end
 
+-- Fecha configurações: volta para a última aba
 function Window:ToggleConfig()
 	if self._configOpen then
 		self:SelectTab(self._currentIndex or 1)
@@ -2685,16 +2717,21 @@ function Window:ToggleConfig()
 	end
 end
 
-function Window:SetUIScale(s)
-	self._userScale = math.clamp(s, 0.5, 1.5)
-	self:_fitScale()
+local function getViewport()
+	local cam = getCamera()
+	return cam and cam.ViewportSize or Vector2.new(1280, 720)
 end
 
 function Window:_fitScale()
-	local vp = camera.ViewportSize
+	local vp = getViewport()
 	local fit = math.min(1, (vp.X - 16) / self._curW, (vp.Y - 16) / self._curH)
 	local s = math.clamp(fit * self._userScale, 0.3, 1.5)
 	tween(self._uiScale, SIZE_INFO, { Scale = s })
+end
+
+function Window:SetUIScale(s)
+	self._userScale = math.clamp(s, 0.5, 1.5)
+	self:_fitScale()
 end
 
 function Window:SetVisible(visible)
@@ -2702,14 +2739,10 @@ function Window:SetVisible(visible)
 	self._window.Visible = visible
 end
 
-function Window:Toggle() self:SetVisible(not self._window.Visible) end
+function Window:GetVisible() return self._window.Visible end
 function Window:Minimize() self:SetVisible(false) end
 function Window:Maximize() self:SetVisible(true) end
-function Window:IsVisible() return self._window.Visible end
-
-function Window:SetTitle(title)
-	if self._titleLabel then self._titleLabel.Text = tostring(title or "") end
-end
+function Window:Toggle() self:SetVisible(not self._window.Visible) end
 
 function Window:SetBackground(index, animate)
 	if type(index) ~= "number" or index < 1 or index > #BACKGROUNDS then
@@ -2720,10 +2753,7 @@ function Window:SetBackground(index, animate)
 	self._bgHost:Set(index, animate ~= false)
 	if self._toggleHost then self._toggleHost:Set(index, animate ~= false) end
 	local tema = GodLib.Options["Tema"]
-	local wanted = "Fundo " .. index
-	if tema and tema.Value ~= wanted then
-		tema:Set(wanted)
-	end
+	if tema then tema:Set("Fundo " .. index) end
 end
 
 function Window:NextBackground()
@@ -2738,29 +2768,35 @@ function Window:GetTab(name)
 	return nil
 end
 
-function Window:Dialog(config) GodLib:Dialog(config) end
-
 function Window:Destroy()
 	self:_closePopupNow()
 	if self._gui then pcall(function() self._gui:Destroy() end) end
 	if GodLib._currentWindow == self then GodLib._currentWindow = nil end
 end
 
--- ========== CREATE WINDOW ==========
 function GodLib:CreateWindow(config)
 	config = config or {}
+	if type(config) ~= "table" then
+		log("CreateWindow: config deve ser uma tabela")
+		config = {}
+	end
 
-	if self._currentWindow then pcall(function() self._currentWindow:Destroy() end) end
+	if self._currentWindow then
+		pcall(function() self._currentWindow:Destroy() end)
+	end
 
 	local gui = Instance.new("ScreenGui")
-	gui.Name = randomName(16)
+	gui.Name = "GodLib"
 	gui.ResetOnSpawn = false
 	gui.IgnoreGuiInset = true
 	gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 	protectGui(gui)
 
 	local ok = pcall(function() gui.Parent = guiParent end)
-	if not ok or not gui.Parent then gui.Parent = playerGui end
+	if not ok or not gui.Parent then
+		log("falha ao parentear em guiParent, usando PlayerGui")
+		gui.Parent = playerGui
+	end
 
 	local winW = (config.Size and config.Size.X.Offset) or 500
 	local winH = (config.Size and config.Size.Y.Offset) or 340
@@ -2774,17 +2810,16 @@ function GodLib:CreateWindow(config)
 		Parent = gui,
 	})
 	addCorner(window, 8)
-	local uiScale = new("UIScale", { Parent = window })
 
+	local uiScale = new("UIScale", { Parent = window })
 	local bgHost = makeBgHost(window, 8)
-	local shade = new("Frame", {
+
+	new("Frame", {
 		Size = UDim2.fromScale(1, 1),
 		BackgroundColor3 = DARK,
 		BackgroundTransparency = 0.3,
-		ZIndex = 2,
 		Parent = window,
 	})
-	addCorner(shade, 8)
 
 	makeGlowBorder(window, 8, 1.5, 15)
 
@@ -2792,39 +2827,17 @@ function GodLib:CreateWindow(config)
 		Name = "Overlay",
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
-		ZIndex = 50,
 		Parent = gui,
 	})
 
-	-- Barra de título arrastável
 	local titleBar = new("TextButton", {
 		Size = UDim2.new(1, 0, 0, 34),
 		BackgroundTransparency = 1,
 		AutoButtonColor = false,
 		Text = "",
-		ZIndex = 5,
 		Parent = window,
 	})
-
-	local dragStart, startPos, dragging
-	titleBar.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			dragging = true
-			dragStart = input.Position
-			startPos = window.Position
-		end
-	end)
-	track(UserInputService.InputChanged:Connect(function(input)
-		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-			local d = (input.Position - dragStart) / uiScale.Scale
-			window.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
-		end
-	end))
-	track(UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			dragging = false
-		end
-	end))
+	makeDraggable(titleBar, window, uiScale, nil)
 
 	local titleLogo = new("ImageLabel", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
@@ -2833,7 +2846,6 @@ function GodLib:CreateWindow(config)
 		Size = UDim2.fromOffset(20, 20),
 		Image = LOGO,
 		ScaleType = Enum.ScaleType.Fit,
-		ZIndex = 6,
 		Parent = titleBar,
 	})
 	local logoScale = new("UIScale", { Parent = titleLogo })
@@ -2856,16 +2868,28 @@ function GodLib:CreateWindow(config)
 		TextColor3 = CREAM,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		RichText = true,
-		ZIndex = 6,
 		Text = ('<font color="#FFC400">%s</font> %s'):format(config.Title or "God", config.SubTitle or "Lib"),
 		Parent = titleBar,
+	})
+
+	local divider = new("Frame", {
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -118, 0, 17),
+		Size = UDim2.fromOffset(38, 2),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		Rotation = -65,
+		Parent = titleBar,
+	})
+	new("UIGradient", {
+		Color = ColorSequence.new(ORANGE, GOLD),
+		Transparency = NumberSequence.new(0.3, 0),
+		Parent = divider,
 	})
 
 	local underline = new("Frame", {
 		Position = UDim2.fromOffset(0, 33),
 		Size = UDim2.new(1, 0, 0, 2),
 		BackgroundColor3 = Color3.new(1, 1, 1),
-		ZIndex = 6,
 		Parent = window,
 	})
 	new("UIGradient", {
@@ -2882,12 +2906,14 @@ function GodLib:CreateWindow(config)
 			ImageColor3 = GOLD,
 			Position = UDim2.new(1, rightOffset, 0, 10),
 			Size = UDim2.fromOffset(14, 14),
-			ZIndex = 6,
 			Parent = titleBar,
 		})
 		b.MouseEnter:Connect(function() tween(b, FAST, { ImageColor3 = CREAM }) end)
 		b.MouseLeave:Connect(function() tween(b, FAST, { ImageColor3 = GOLD }) end)
-		b.MouseButton1Click:Connect(function() safeCall(onClick) end)
+		b.MouseButton1Click:Connect(function()
+			local ok2, err = pcall(onClick)
+			if not ok2 then log("windowButton: " .. tostring(err)) end
+		end)
 		return b
 	end
 
@@ -2899,17 +2925,21 @@ function GodLib:CreateWindow(config)
 		_tabs = {},
 		_navButtons = {},
 		_pages = {},
+		_popupConns = {},
 		_bgIndex = 1,
 		_bgHost = bgHost,
 		_toggleHost = nil,
 		_closePopup = nil,
 		_expanded = false,
 		_userScale = 1,
+		_winW = winW,
+		_winH = winH,
 		_curW = winW,
 		_curH = winH,
-		_titleLabel = titleLabel,
 		_autoBg = config.AutoBackground ~= false,
 		_toggleKey = config.MinimizeKey or Enum.KeyCode.RightShift,
+		_titleLabel = titleLabel,
+		_config = config,
 	}, Window)
 
 	self._configTab = self:_buildPage("Configurações")
@@ -2951,7 +2981,12 @@ function GodLib:CreateWindow(config)
 		addCorner(toggleButton, 10)
 		self._toggleHost = makeBgHost(toggleButton, 10)
 		self._toggleHost:Set(self._bgIndex, false)
-		new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = DARK, BackgroundTransparency = 0.3, ZIndex = 2, Parent = toggleButton })
+		new("Frame", {
+			Size = UDim2.fromScale(1, 1),
+			BackgroundColor3 = DARK,
+			BackgroundTransparency = 0.3,
+			Parent = toggleButton,
+		})
 		new("ImageLabel", {
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromScale(0.5, 0.5),
@@ -2959,31 +2994,11 @@ function GodLib:CreateWindow(config)
 			BackgroundTransparency = 1,
 			Image = LOGO,
 			ScaleType = Enum.ScaleType.Fit,
-			ZIndex = 3,
+			ZIndex = 2,
 			Parent = toggleButton,
 		})
 		makeGlowBorder(toggleButton, 10, 1.5, 5)
-
-		local dragT, startT, moved, dragging2 = nil, nil, false, false
-		toggleButton.InputBegan:Connect(function(input)
-			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-				dragging2 = true moved = false
-				dragT = input.Position startT = toggleButton.Position
-			end
-		end)
-		track(UserInputService.InputChanged:Connect(function(input)
-			if dragging2 and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-				local d = input.Position - dragT
-				if d.Magnitude > 4 then moved = true end
-				toggleButton.Position = UDim2.new(startT.X.Scale, startT.X.Offset + d.X, startT.Y.Scale, startT.Y.Offset + d.Y)
-			end
-		end))
-		track(UserInputService.InputEnded:Connect(function(input)
-			if dragging2 and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
-				dragging2 = false
-				if not moved then self:Toggle() end
-			end
-		end))
+		makeDraggable(toggleButton, toggleButton, nil, function() self:Toggle() end)
 	end
 
 	track(UserInputService.InputBegan:Connect(function(input, processed)
@@ -3002,28 +3017,40 @@ function GodLib:CreateWindow(config)
 	end)
 
 	self:_fitScale()
-	track(camera:GetPropertyChangedSignal("ViewportSize"):Connect(function() self:_fitScale() end))
+	local cam = getCamera()
+	if cam then
+		track(cam:GetPropertyChangedSignal("ViewportSize"):Connect(function() self:_fitScale() end))
+	end
 
-	-- ========== CONFIGURAÇÕES ==========
+	-- ========== PÁGINA DE CONFIGURAÇÕES ==========
 	local cfg = self._configTab
 	cfg:AddSection("Interface")
 	cfg:AddSlider("Escala da UI", {
-		Title = "Escala da UI", Description = "Tamanho geral (50% a 150%)", Icon = "scale",
+		Title = "Escala da UI",
+		Description = "Tamanho geral da janela (50% a 150%)",
+		Icon = "scale",
 		Min = 50, Max = 150, Default = 100,
 		Callback = function(v) self:SetUIScale(v / 100) end,
 	})
 	cfg:AddDropdown("Idioma", {
-		Title = "Idioma", Description = "Idioma da interface", Icon = "languages",
-		Values = { "Português", "English" }, Default = "Português",
+		Title = "Idioma",
+		Description = "Idioma da interface",
+		Icon = "languages",
+		Values = { "Português", "English" },
+		Default = "Português",
 		Callback = function(v) GodLib.Lang = v end,
 	})
 	cfg:AddToggle("Fundo automático", {
-		Title = "Trocar fundo sozinho", Description = "Troca a cada " .. AUTO_BG_TIME .. "s",
-		Icon = "toggle-right", Default = true,
+		Title = "Trocar fundo sozinho",
+		Description = "Troca o fundo a cada " .. AUTO_BG_TIME .. " segundos",
+		Icon = "toggle-right",
+		Default = self._autoBg,
 		Callback = function(v) self._autoBg = v end,
 	})
 	cfg:AddKeybind("Tecla do menu", {
-		Title = "Tecla do menu", Description = "Mostrar/esconder", Icon = "keyboard",
+		Title = "Tecla do menu",
+		Description = "Tecla para mostrar/esconder",
+		Icon = "keyboard",
 		Default = self._toggleKey,
 	})
 	GodLib.Options["Tecla do menu"]:OnChanged(function(v) self._toggleKey = v end)
@@ -3032,8 +3059,12 @@ function GodLib:CreateWindow(config)
 	local themeNames = {}
 	for i = 1, #BACKGROUNDS do table.insert(themeNames, "Fundo " .. i) end
 	cfg:AddDropdown("Tema", {
-		Title = "Tema de fundo", Description = "Escolha um fundo", Icon = "image",
-		Values = themeNames, Default = "Fundo 1", MenuWidth = 180,
+		Title = "Tema de fundo",
+		Description = "Escolha um fundo da lib",
+		Icon = "image",
+		Values = themeNames,
+		Default = "Fundo 1",
+		MenuWidth = 190,
 		ImageOf = function(o)
 			local n = tonumber(tostring(o):match("(%d+)$"))
 			return n and BACKGROUNDS[n] or nil
@@ -3044,46 +3075,92 @@ function GodLib:CreateWindow(config)
 		end,
 	})
 	cfg:AddInput("NovoFundo", {
-		Title = "Adicionar ID", Description = "Cole um rbxassetid", Icon = "box",
+		Title = "Adicionar ID",
+		Description = "Cole um rbxassetid e aplica",
+		Icon = "box",
 		Placeholder = "rbxassetid://...",
 		Callback = function(txt)
-			local digits = tostring(txt or ""):match("(%d+)")
-			if not digits then GodLib:NotifyError("Erro", "ID inválido") return end
-			table.insert(BACKGROUNDS, "rbxassetid://" .. digits)
-			table.insert(themeNames, "Fundo " .. #BACKGROUNDS)
-			self:SetBackground(#BACKGROUNDS, true)
-			GodLib:NotifySuccess("Fundo adicionado", "Fundo " .. #BACKGROUNDS .. " aplicado")
+			txt = tostring(txt or "")
+			if txt == "" then return end
+			local idx = GodLib:AddBackground(txt)
+			if idx then
+				table.insert(themeNames, "Fundo " .. idx)
+				self:SetBackground(idx, true)
+				GodLib:NotifySuccess("Fundo adicionado", "Fundo " .. idx .. " aplicado")
+			else
+				GodLib:NotifyError("Erro", "ID inválido")
+			end
 		end,
 	})
 
 	cfg:AddSection("Discord")
-	cfg:AddInput("WebhookURL", {
-		Title = "Webhook", Description = "Cole a URL do webhook", Icon = "webhook",
+	cfg:AddInput("DiscordWebhook", {
+		Title = "Webhook",
+		Description = "Cole a URL do webhook (não é salva)",
+		Icon = "send",
 		Placeholder = "https://discord.com/api/webhooks/...",
-		Callback = function(txt) if txt ~= "" then GodLib:SetWebhook(txt) end end,
+		Callback = function(txt)
+			local ok2, err = GodLib.Discord:SetWebhook(txt)
+			if ok2 then
+				GodLib:NotifySuccess("Discord", "Webhook configurado")
+			else
+				GodLib:NotifyError("Discord", err or "Falha")
+			end
+		end,
 	})
-	cfg:AddButton("TestWebhook", {
-		Title = "Testar webhook", Description = "Envia uma mensagem de teste", Icon = "send",
-		ButtonTitle = "Enviar", Callback = function()
-			if GodLib:SendEmbed("Teste", "Webhook conectado com sucesso!", 16763904) then
+	cfg:AddButton("Testar webhook", {
+		Title = "Testar webhook",
+		Description = "Envia uma mensagem de teste",
+		Icon = "send",
+		ButtonTitle = "Enviar",
+		Callback = function()
+			local ok2, code = GodLib.Discord:Send({ Content = "Teste da GodLib " .. GodLib.Version })
+			if ok2 then
 				GodLib:NotifySuccess("Discord", "Mensagem enviada")
 			else
-				GodLib:NotifyError("Discord", "Falha ao enviar")
+				GodLib:NotifyError("Discord", "Falha: " .. tostring(code))
 			end
+		end,
+	})
+
+	cfg:AddSection("Configuração")
+	cfg:AddButton("Salvar config", {
+		Title = "Salvar configuração",
+		Description = "Grava as opções em arquivo (se o executor permitir)",
+		Icon = "save",
+		ButtonTitle = "Salvar",
+		Callback = function()
+			local ok2, err = GodLib:SaveConfig()
+			if ok2 then GodLib:NotifySuccess("Config", "Configuração salva")
+			else GodLib:NotifyError("Config", tostring(err)) end
+		end,
+	})
+	cfg:AddButton("Carregar config", {
+		Title = "Carregar configuração",
+		Description = "Lê o arquivo salvo anteriormente",
+		Icon = "download",
+		ButtonTitle = "Carregar",
+		Callback = function()
+			local ok2, err = GodLib:LoadConfig()
+			if ok2 then GodLib:NotifySuccess("Config", "Configuração carregada")
+			else GodLib:NotifyError("Config", tostring(err)) end
 		end,
 	})
 
 	cfg:AddSection("Sobre")
 	cfg:AddParagraph({
 		Title = "GodLib " .. GodLib.Version,
-		Content = "Controles, notificações, diálogos, fundos animados, webhook do Discord e sistema de opções.",
+		Content = "Controles, notificações, diálogos, fundos animados, integração com Discord e "
+			.. "sistema de opções (GetOption, SetOption, LoadOptions, GetAllOptions, SaveConfig, LoadConfig).",
 	})
 	cfg:AddButton("Descarregar", {
-		Title = "Descarregar", Description = "Remove a interface e limpa conexões", Icon = "x",
-		ButtonTitle = "Descarregar", Callback = function() GodLib:Unload() end,
+		Title = "Descarregar",
+		Description = "Remove a interface e limpa conexões",
+		Icon = "x",
+		ButtonTitle = "Descarregar",
+		Callback = function() GodLib:Unload() end,
 	})
 
-	GodLib._titleLabel = titleLabel
 	GodLib._currentWindow = self
 	GodLib._gui = gui
 	genv.GodLib = GodLib
@@ -3091,7 +3168,47 @@ function GodLib:CreateWindow(config)
 	return self
 end
 
--- ========== API EXTRA ==========
+function GodLib:AddWindow() log("AddWindow múltiplas janelas: use CreateWindow") end
+
+function GodLib:Unload()
+	if self._currentWindow then pcall(function() self._currentWindow:Destroy() end) end
+	self:Cleanup()
+	if self._gui then pcall(function() self._gui:Destroy() end) end
+	self._gui = nil
+	self._currentWindow = nil
+	genv.GodLib = nil
+end
+
+function GodLib:Cleanup()
+	for _, c in ipairs(GodLib.Connections) do
+		pcall(function() c:Disconnect() end)
+	end
+	table.clear(GodLib.Connections)
+end
+
+-- ========== BACKGROUNDS ==========
+function GodLib:AddBackground(id)
+	local digits = tostring(id or ""):match("(%d+)")
+	if not digits then return nil end
+	table.insert(BACKGROUNDS, "rbxassetid://" .. digits)
+	return #BACKGROUNDS
+end
+
+function GodLib:SetBackground(index, animate)
+	if self._currentWindow then self._currentWindow:SetBackground(index, animate) end
+end
+
+function GodLib:GetBackgroundIndex()
+	return self._currentWindow and self._currentWindow._bgIndex or nil
+end
+
+function GodLib:SetAutoBackground(v)
+	if self._currentWindow then self._currentWindow._autoBg = v == true end
+	local opt = self.Options["Fundo automático"]
+	if opt then opt:Set(v == true) end
+end
+
+-- ========== JANELA (API EXTRA) ==========
 function GodLib:GetVersion() return self.Version end
 
 function GodLib:IsVisible()
@@ -3107,73 +3224,234 @@ function GodLib:Toggle()
 end
 
 function GodLib:Center()
-	if self._currentWindow then self._currentWindow._window.Position = UDim2.fromScale(0.5, 0.5) end
-end
-
-function GodLib:SetTitle(title)
-	if self._currentWindow then self._currentWindow:SetTitle(title) end
-end
-
-function GodLib:SetBackground(index, animate)
-	if self._currentWindow then self._currentWindow:SetBackground(index, animate) end
-end
-
-function GodLib:SetUIScale(s)
-	if self._currentWindow then self._currentWindow:SetUIScale(s) end
-end
-
-function GodLib:AddBackground(id)
-	local digits = tostring(id or ""):match("(%d+)")
-	if not digits then return false end
-	table.insert(BACKGROUNDS, "rbxassetid://" .. digits)
-	return #BACKGROUNDS
-end
-
-function GodLib:AddIcon(name, id)
-	local digits = tostring(id or ""):match("(%d+)")
-	if type(name) ~= "string" or not digits then return false end
-	self.Icons[name] = "rbxassetid://" .. digits
-	return true
-end
-
-function GodLib:GetIcon(name) return icon(name) end
-
-function GodLib:Unload()
-	if self._currentWindow then pcall(function() self._currentWindow:Destroy() end) end
-	self:Cleanup()
-	if self._gui then pcall(function() self._gui:Destroy() end) end
-	genv.GodLib = nil
-end
-
-function GodLib:Destroy() self:Unload() end
-
-function GodLib:GetAllOptions()
-	local t = {}
-	for k, opt in pairs(self.Options) do t[k] = opt:Get() end
-	return t
-end
-
-function GodLib:LoadOptions(tbl)
-	if type(tbl) ~= "table" then return end
-	for k, v in pairs(tbl) do
-		local opt = self.Options[k]
-		if opt then opt:Set(v) end
+	if self._currentWindow then
+		self._currentWindow._window.Position = UDim2.fromScale(0.5, 0.5)
 	end
 end
 
-function GodLib:SetFlag(name, value) self.Flags[name] = value end
-function GodLib:GetFlag(name) return self.Flags[name] end
-
-function GodLib:Log(msg) log(msg) end
-
-function GodLib:Notif(title, content, duration)
-	self:Notify({ Title = title, Content = content, Duration = duration or 4 })
+function GodLib:SetTitle(title)
+	if self._currentWindow and self._currentWindow._titleLabel then
+		self._currentWindow._titleLabel.Text = tostring(title or "")
+	end
 end
 
-function GodLib:Warn(title, content, duration)
-	self:NotifyWarn(title, content, duration)
+function GodLib:SetUIScale(percent)
+	if self._currentWindow then self._currentWindow:SetUIScale((tonumber(percent) or 100) / 100) end
 end
 
+-- ========== UTILITÁRIOS ==========
+function GodLib:GetCapabilities()
+	local copy = {}
+	for k, v in pairs(CAP) do copy[k] = v and true or false end
+	return copy
+end
+
+function GodLib:GetExecutor()
+	if CAP.identify then
+		local ok, name, ver = pcall(identifyexecutor)
+		if ok and name then return tostring(name) .. (ver and (" " .. tostring(ver)) or "") end
+	end
+	return "Desconhecido"
+end
+
+function GodLib:IsMobile()
+	return CAP.mobile
+end
+
+function GodLib:GetUptime()
+	return os.clock() - startClock
+end
+
+function GodLib:Clamp(v, min, max)
+	return math.clamp(tonumber(v) or min, min, max)
+end
+
+-- ========== SALVAR / CARREGAR CONFIG ==========
+local function encodeValue(v)
+	if typeof(v) == "Color3" then
+		return { __t = "c3", v = { v.R, v.G, v.B } }
+	elseif typeof(v) == "EnumItem" then
+		return { __t = "key", v = v.Name }
+	end
+	return v
+end
+
+local function decodeValue(v)
+	if type(v) == "table" and v.__t then
+		if v.__t == "c3" and type(v.v) == "table" then
+			return Color3.new(v.v[1], v.v[2], v.v[3])
+		elseif v.__t == "key" then
+			local ok, key = pcall(function() return Enum.KeyCode[v.v] end)
+			return ok and key or nil
+		end
+	end
+	return v
+end
+
+function GodLib:SaveConfig(file)
+	if not CAP.fs then return false, "executor sem writefile" end
+	if not HttpService then return false, "HttpService indisponível" end
+	file = file or "GodLib_Config.json"
+	local data = {}
+	for k, opt in pairs(self.Options) do
+		if not SECRET_OPTIONS[k] then data[k] = encodeValue(opt.Value) end
+	end
+	local ok, encoded = pcall(function() return HttpService:JSONEncode(data) end)
+	if not ok then return false, "falha ao codificar" end
+	local okW, err = pcall(writefile, file, encoded)
+	if not okW then return false, tostring(err) end
+	return true
+end
+
+function GodLib:LoadConfig(file)
+	if not CAP.fs then return false, "executor sem readfile" end
+	if not HttpService then return false, "HttpService indisponível" end
+	file = file or "GodLib_Config.json"
+	if not isfile(file) then return false, "arquivo não encontrado" end
+	local okR, raw = pcall(readfile, file)
+	if not okR then return false, "falha ao ler" end
+	local okD, data = pcall(function() return HttpService:JSONDecode(raw) end)
+	if not okD or type(data) ~= "table" then return false, "arquivo inválido" end
+	for k, v in pairs(data) do
+		local opt = self.Options[k]
+		if opt and not SECRET_OPTIONS[k] then opt:Set(decodeValue(v)) end
+	end
+	return true
+end
+
+-- ========== DISCORD ==========
+local Discord = {}
+Discord.__index = Discord
+
+local function validWebhook(url)
+	return type(url) == "string"
+		and url:find("discord") ~= nil
+		and url:find("^https://[%w%.]+/api/webhooks/%d+/[%w_%-]+") ~= nil
+end
+
+local function toColorInt(c)
+	if typeof(c) == "Color3" then
+		return math.floor(c.R * 255) * 65536 + math.floor(c.G * 255) * 256 + math.floor(c.B * 255)
+	elseif type(c) == "number" then
+		return math.floor(c)
+	end
+	return nil
+end
+
+local function isoNow()
+	local ok, res = pcall(function() return DateTime.now():ToIsoDate() end)
+	return ok and res or nil
+end
+
+function Discord:SetWebhook(url)
+	if not validWebhook(url) then return false, "URL de webhook inválida" end
+	self._url = url
+	return true
+end
+
+function Discord:HasWebhook()
+	return self._url ~= nil
+end
+
+-- Retorna nome/servidor/canal do webhook (sem expor o token)
+function Discord:GetInfo()
+	if not self._url then return nil, "sem webhook" end
+	if not CAP.request then return nil, "executor sem suporte a HTTP" end
+	local ok, res = pcall(CAP.request, { Url = self._url, Method = "GET" })
+	if not ok or type(res) ~= "table" then return nil, "falha na requisição" end
+	local code = res.StatusCode or res.Status or 0
+	if code ~= 200 then return nil, "HTTP " .. tostring(code) end
+	if not HttpService then return nil, "HttpService indisponível" end
+	local okD, data = pcall(function() return HttpService:JSONDecode(res.Body) end)
+	if not okD or type(data) ~= "table" then return nil, "resposta inválida" end
+	return { Name = data.name, GuildId = data.guild_id, ChannelId = data.channel_id, Id = data.id }
+end
+
+-- Monta um embed. Campos: Title, Description, Url, Color, Timestamp, Footer, FooterIcon,
+-- Thumbnail, Image, Author, AuthorIcon, Fields = { {Name, Value, Inline} }
+function Discord.Embed(t)
+	t = t or {}
+	local e = {
+		title = t.Title,
+		description = t.Description,
+		url = t.Url,
+		color = toColorInt(t.Color),
+	}
+	if t.Timestamp then e.timestamp = isoNow() end
+	if t.Footer then e.footer = { text = tostring(t.Footer), icon_url = t.FooterIcon } end
+	if t.Thumbnail then e.thumbnail = { url = t.Thumbnail } end
+	if t.Image then e.image = { url = t.Image } end
+	if t.Author then e.author = { name = tostring(t.Author), icon_url = t.AuthorIcon } end
+	if type(t.Fields) == "table" and #t.Fields > 0 then
+		e.fields = {}
+		for _, f in ipairs(t.Fields) do
+			table.insert(e.fields, {
+				name = tostring(f.Name or "-"),
+				value = tostring(f.Value or "-"),
+				inline = f.Inline == true,
+			})
+		end
+	end
+	return e
+end
+
+-- Envia payload: Content, Username, AvatarUrl, TTS, Embeds (lista de Discord.Embed)
+function Discord:Send(payload)
+	payload = payload or {}
+	if not self._url then return false, "webhook não configurado" end
+	if not CAP.request or not HttpService then return false, "executor sem suporte a HTTP" end
+
+	local body = {
+		content = payload.Content,
+		username = payload.Username,
+		avatar_url = payload.AvatarUrl,
+		tts = payload.TTS,
+		embeds = payload.Embeds,
+	}
+	if not body.content and not body.embeds then return false, "mensagem vazia" end
+
+	local okE, encoded = pcall(function() return HttpService:JSONEncode(body) end)
+	if not okE then return false, "falha ao codificar" end
+
+	local ok, res = pcall(CAP.request, {
+		Url = self._url .. "?wait=false",
+		Method = "POST",
+		Headers = { ["Content-Type"] = "application/json" },
+		Body = encoded,
+	})
+	if not ok or type(res) ~= "table" then return false, "falha na requisição" end
+	local code = res.StatusCode or res.Status or 0
+	return code >= 200 and code < 300, code
+end
+
+function Discord:Message(text, username, avatarUrl)
+	return self:Send({ Content = tostring(text or ""), Username = username, AvatarUrl = avatarUrl })
+end
+
+function Discord:SendEmbed(embedTable, username, avatarUrl)
+	return self:Send({ Username = username, AvatarUrl = avatarUrl, Embeds = { Discord.Embed(embedTable) } })
+end
+
+-- Evento pronto: título, cor e campos a partir de um dicionário simples
+function Discord:Event(eventName, data, color)
+	local fields = {}
+	if type(data) == "table" then
+		for k, v in pairs(data) do
+			table.insert(fields, { Name = tostring(k), Value = tostring(v), Inline = true })
+		end
+	end
+	return self:SendEmbed({
+		Title = "Evento: " .. tostring(eventName),
+		Color = color or GOLD,
+		Fields = fields,
+		Footer = "GodLib " .. GodLib.Version,
+		Timestamp = true,
+	}, "GodLib")
+end
+
+GodLib.Discord = setmetatable({ _url = nil }, Discord)
+
+-- ========== FIM ==========
 genv.GodLib = GodLib
 
 return GodLib
