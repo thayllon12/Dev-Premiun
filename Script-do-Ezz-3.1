@@ -7,91 +7,146 @@ if not GodLib then
     return
 end
 
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Workspace = game:GetService("Workspace")
-local VirtualUser = game:GetService("VirtualUser")
-local HttpService = game:GetService("HttpService")
-local Lighting = game:GetService("Lighting")
-local CollectionService = game:GetService("CollectionService")
-local TeleportService = game:GetService("TeleportService")
+Players = game:GetService("Players")
+RunService = game:GetService("RunService")
+TweenService = game:GetService("TweenService")
+ReplicatedStorage = game:GetService("ReplicatedStorage")
+Workspace = game:GetService("Workspace")
+VirtualUser = game:GetService("VirtualUser")
+HttpService = game:GetService("HttpService")
+Lighting = game:GetService("Lighting")
+CollectionService = game:GetService("CollectionService")
+VIM = game:GetService("VirtualInputManager")
 
-local Player = Players.LocalPlayer
-local Env = (getgenv and getgenv()) or _G
-
-local Config = {
-    Speed = 350,
-    HoverHeight = 10,
-    AttackRadius = 100,
-    AttackDelay = 0.02,
-    EnemySearch = 800,
-    EnemyTimeout = 15,
-    EnemyIgnoreTime = 20,
-    PumpkinSearch = 1200,
-    LoopInterval = 0.1,
-    IdleWait = 0.5,
-
-    BringRange = 300,
-    MaxBringMobs = 10,
-    BringInterval = 0.25,
-
-    DoorWait = 4,
-    DoorMaxEvent = 60,
-    DoorFailTime = 60,
-    PortalWait = 10,
-    DomainTimeout = 40,
-
-    HalloweenPerWay = 15,
-    HalloweenSwing = 0.2,
-
-    SaveFileName = "PumpkinHuntStates.json",
-    HalloweenSaveFile = "PumpkinHuntHalloween.json",
-    HalloweenDumpFolder = "PumpkinHuntDump",
-}
+Player = Players.LocalPlayer
+Env = (getgenv and getgenv()) or _G
 
 if Env.PumpkinHuntCleanup then
     pcall(Env.PumpkinHuntCleanup)
 end
 
-local Destroyed = false
+RUN_ID = tostring(os.clock()) .. "_" .. tostring(math.random(1, 1000000000))
+CONNS = {}
 
--- =========================================================
--- ESTADOS
--- =========================================================
+SEA_OF_PLACE = {
+    [2753915549] = 1, [85211729168715] = 1,
+    [4442272183] = 2, [79091703265657] = 2,
+    [7449423635] = 3, [100117331123089] = 3,
+}
 
-local GodFarm = false
-local AutoAttack = true
-local AutoRollStore = true
-local AutoHaki = true
-local AutoBring = true
-local AutoBringFruits = true
-local WalkWater = true
-local ShowESP = true
-local GodFPS = false
-local SelectedToolType = "Melee"
-local HalloweenDoors = false
-local HalloweenBoss = false
-local HalloweenRareFirst = true
-local HalloweenWatchOn = false
+DOOR_SPOTS = {
+    [1] = Vector3.new(-664, 5, 1589),
+}
 
-local function GetSavePath()
+CFG = {
+    Speed = 380,
+    HoverHeight = 10,
+    HitRange = 60,
+    AttackDelay = 0.1,
+    TargetSearch = 2000,
+    DomainSearch = 1500,
+    DomainTimeout = 25,
+    EnemyTimeout = 20,
+    EnemyIgnoreTime = 20,
+    EventMinutes = 10,
+    WaterClearance = 4,
+    IdleWait = 0.5,
+    BringRange = 300,
+    MaxBringMobs = 10,
+    BringInterval = 0.25,
+    DoorWait = 3.5,
+    DoorMax = 45,
+    DoorSkip = 30,
+    KnockStand = 4,
+    PortalWait = 5,
+    PerWay = 15,
+    Swing = 0.2,
+    PumpkinSkip = 20,
+    FruitSkip = 60,
+    SaveFileName = "PumpkinHuntStates.json",
+}
+
+Destroyed = false
+GodFarm = false
+AutoAttack = true
+AutoHitVariant = true
+AutoRollStore = true
+AutoHaki = true
+AutoBring = true
+AutoBringFruits = true
+WalkWater = true
+ShowESP = true
+GodFPS = false
+SelectedToolType = "Melee"
+HalloweenDoors = false
+HalloweenRareFirst = false
+HellfirePortal = true
+HellfireGasOnly = true
+AcceptTeleport = true
+GoDoorSpot = true
+FocusDapperJack = true
+SkipOthersPumpkins = true
+AcceptRewards = true
+HitVariant = "new"
+LastEquip = 0
+
+Holding = false
+LockCF = nil
+Travel = nil
+LastWritten = nil
+SavedCollide = {}
+CharCache = {}
+CharCacheAt = 0
+CharCacheChar = nil
+WaterSlabRef = nil
+WaterSlabAt = -1
+
+BringTweens = {}
+TweenInfoBring = TweenInfo.new(0.35, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
+ESPBillboards = {}
+ESPActive = {}
+GodFPSGui = nil
+GodFPSOriginals = {}
+GodFPSOriginalLighting = {}
+
+HS = {
+    door = nil,
+    target = nil,
+    portalDoor = nil,
+    portalAt = 0,
+    domain = nil,
+    lastFight = 0,
+    startedAt = os.time(),
+    doorSet = setmetatable({}, { __mode = "k" }),
+    doorSkip = setmetatable({}, { __mode = "k" }),
+    skip = setmetatable({}, { __mode = "k" }),
+    ignored = setmetatable({}, { __mode = "k" }),
+    fruitSkip = setmetatable({}, { __mode = "k" }),
+    tally = { kills = 0, pumpkins = 0, doors = 0, rare = 0, fruits = 0, bosses = 0, bossKills = 0 },
+    way = nil,
+    mode = "OFF",
+    note = "",
+    tpHour = nil,
+    listening = false,
+    lastError = nil,
+}
+
+function GetSavePath()
     if writefile and isfolder then
         local folder = "PumpkinHunt"
         if not isfolder(folder) then pcall(makefolder, folder) end
-        return folder .. "/" .. Config.SaveFileName
+        return folder .. "/" .. CFG.SaveFileName
     end
     return nil
 end
 
-local function SaveStates()
+function SaveStates()
     local path = GetSavePath()
     if not path or not writefile then return end
-
     local data = {
         GodFarm = GodFarm,
         AutoAttack = AutoAttack,
+        AutoHitVariant = AutoHitVariant,
         AutoRollStore = AutoRollStore,
         AutoHaki = AutoHaki,
         AutoBring = AutoBring,
@@ -100,39 +155,47 @@ local function SaveStates()
         ShowESP = ShowESP,
         SelectedToolType = SelectedToolType,
         HalloweenDoors = HalloweenDoors,
-        HalloweenBoss = HalloweenBoss,
         HalloweenRareFirst = HalloweenRareFirst,
-        HalloweenWatchOn = HalloweenWatchOn,
+        HellfirePortal = HellfirePortal,
+        HellfireGasOnly = HellfireGasOnly,
+        AcceptTeleport = AcceptTeleport,
+        GoDoorSpot = GoDoorSpot,
+        FocusDapperJack = FocusDapperJack,
+        SkipOthersPumpkins = SkipOthersPumpkins,
+        AcceptRewards = AcceptRewards,
+        Tune = {
+            Speed = CFG.Speed,
+            HoverHeight = CFG.HoverHeight,
+            HitRange = CFG.HitRange,
+            AttackDelay = CFG.AttackDelay,
+            EnemyTimeout = CFG.EnemyTimeout,
+            EventMinutes = CFG.EventMinutes,
+        },
+        HalloweenWay = HS.way,
         GamePlaceId = game.PlaceId,
-        Timestamp = os.time(),
     }
-
     local ok, encoded = pcall(function() return HttpService:JSONEncode(data) end)
     if ok then pcall(writefile, path, encoded) end
 end
 
-local function LoadStates()
+function LoadStates()
     local path = GetSavePath()
     if not path or not readfile or not isfile then return nil end
-
     local ok, exists = pcall(isfile, path)
     if not ok or not exists then return nil end
-
     local ok2, content = pcall(readfile, path)
     if not ok2 or not content then return nil end
-
     local ok3, decoded = pcall(function() return HttpService:JSONDecode(content) end)
     if not ok3 or type(decoded) ~= "table" then return nil end
     if decoded.GamePlaceId and decoded.GamePlaceId ~= game.PlaceId then return nil end
-
     return decoded
 end
 
-local Saved = LoadStates()
+Saved = LoadStates()
 if Saved then
-    -- AutoFarm antigo vira GodFarm
-    GodFarm = Saved.GodFarm ~= nil and Saved.GodFarm or (Saved.AutoFarm == true)
+    if Saved.GodFarm ~= nil then GodFarm = Saved.GodFarm end
     if Saved.AutoAttack ~= nil then AutoAttack = Saved.AutoAttack end
+    if Saved.AutoHitVariant ~= nil then AutoHitVariant = Saved.AutoHitVariant end
     if Saved.AutoRollStore ~= nil then AutoRollStore = Saved.AutoRollStore end
     if Saved.AutoHaki ~= nil then AutoHaki = Saved.AutoHaki end
     if Saved.AutoBring ~= nil then AutoBring = Saved.AutoBring end
@@ -141,98 +204,1020 @@ if Saved then
     if Saved.ShowESP ~= nil then ShowESP = Saved.ShowESP end
     if Saved.SelectedToolType then SelectedToolType = Saved.SelectedToolType end
     if Saved.HalloweenDoors ~= nil then HalloweenDoors = Saved.HalloweenDoors end
-    if Saved.HalloweenBoss ~= nil then HalloweenBoss = Saved.HalloweenBoss end
     if Saved.HalloweenRareFirst ~= nil then HalloweenRareFirst = Saved.HalloweenRareFirst end
-    if Saved.HalloweenWatchOn ~= nil then HalloweenWatchOn = Saved.HalloweenWatchOn end
-end
-
-_G.WalkWater = WalkWater
-_G.MaxBringMobs = Config.MaxBringMobs
-_G.BringRange = Config.BringRange
-
-local function HalloweenOn()
-    return HalloweenDoors or HalloweenBoss
-end
-
--- Algo precisa do sistema de combate/voo agora?
-local function Engaged()
-    return not Destroyed and (GodFarm or AutoAttack or HalloweenOn())
-end
-
--- Modos que podem voar até o alvo (God Farm e Halloween). Só AutoAttack não voa.
-local function FlyMode()
-    return GodFarm or HalloweenOn()
-end
-
--- =========================================================
--- PERSONAGEM / REMOTES
--- =========================================================
-
-local Character, Root, Humanoid
-
-local function UpdateCharacter()
-    Character = Player.Character
-    Root = Character and Character:FindFirstChild("HumanoidRootPart")
-    Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
-end
-UpdateCharacter()
-
-local function GetRemotes()
-    local Modules = ReplicatedStorage:FindFirstChild("Modules")
-    local Net = Modules and Modules:FindFirstChild("Net")
-    local Remotes = ReplicatedStorage:FindFirstChild("Remotes")
-
-    return {
-        RegisterAttack = Net and Net:FindFirstChild("RE/RegisterAttack"),
-        RegisterHit = Net and Net:FindFirstChild("RE/RegisterHit"),
-        Gacha = Net and Net:FindFirstChild("RF/GachaNetworkRF"),
-        CommF = Remotes and Remotes:FindFirstChild("CommF_"),
-    }
-end
-
-local RemoteCache, RemoteCacheAt = nil, 0
-local function Remote(name)
-    if not RemoteCache or RemoteCache[name] == nil or os.clock() - RemoteCacheAt > 3 then
-        RemoteCache = GetRemotes()
-        RemoteCacheAt = os.clock()
+    if Saved.HellfirePortal ~= nil then HellfirePortal = Saved.HellfirePortal end
+    if Saved.HellfireGasOnly ~= nil then HellfireGasOnly = Saved.HellfireGasOnly end
+    if Saved.AcceptTeleport ~= nil then AcceptTeleport = Saved.AcceptTeleport end
+    if Saved.GoDoorSpot ~= nil then GoDoorSpot = Saved.GoDoorSpot end
+    if Saved.FocusDapperJack ~= nil then FocusDapperJack = Saved.FocusDapperJack end
+    if Saved.SkipOthersPumpkins ~= nil then SkipOthersPumpkins = Saved.SkipOthersPumpkins end
+    if Saved.AcceptRewards ~= nil then AcceptRewards = Saved.AcceptRewards end
+    if Saved.HalloweenWay then HS.way = Saved.HalloweenWay end
+    if type(Saved.Tune) == "table" then
+        for k, v in pairs(Saved.Tune) do
+            if CFG[k] ~= nil and type(v) == "number" then CFG[k] = v end
+        end
     end
-    local r = RemoteCache[name]
-    if r and r.Parent then return r end
-    return nil
 end
 
-local function HalloweenRemotes()
+function ServerNow()
+    local ok, t = pcall(function() return Workspace:GetServerTimeNow() end)
+    return ok and t or os.time()
+end
+
+function EventOn()
+    return workspace:GetAttribute("HalloweenEventActive") == true or os.date("!*t").min < CFG.EventMinutes
+end
+
+function SeaSpot()
+    local sea = SEA_OF_PLACE[game.PlaceId]
+    return sea and DOOR_SPOTS[sea] or nil
+end
+
+function Engaged()
+    return not Destroyed and (GodFarm or AutoAttack or HalloweenDoors or AutoBringFruits)
+end
+
+function GetParts()
+    local char = Player.Character
+    if not char then return nil, nil end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not root or not hum or hum.Health <= 0 then return nil, nil end
+    return root, hum
+end
+
+function HealthPct()
+    local _, hum = GetParts()
+    if not hum or hum.MaxHealth <= 0 then return 1 end
+    return hum.Health / hum.MaxHealth
+end
+
+function NetFolder()
+    local modules = ReplicatedStorage:FindFirstChild("Modules")
+    return modules and modules:FindFirstChild("Net")
+end
+
+function NetRemote(name)
+    local net = NetFolder()
+    return net and net:FindFirstChild("RE/" .. name)
+end
+
+function CommFRemote()
+    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    return remotes and remotes:FindFirstChild("CommF_")
+end
+
+function HalloweenRemotes()
     local f = ReplicatedStorage:FindFirstChild("Remotes")
     if not f then return nil, nil end
     return f:FindFirstChild("HalloweenEvent"), f:FindFirstChild("HalloweenFunction")
 end
 
-local function FireEvent(name)
+function FireEvent(name)
     local ev = HalloweenRemotes()
     if ev then pcall(function() ev:FireServer(name) end) end
 end
 
-local function ServerNow()
-    local ok, t = pcall(function() return Workspace:GetServerTimeNow() end)
-    return ok and t or os.time()
+function PartOf(m)
+    if not m then return nil end
+    if m:IsA("BasePart") then return m end
+    if m:IsA("Model") then
+        return m:FindFirstChild("HumanoidRootPart") or m.PrimaryPart or m:FindFirstChildWhichIsA("BasePart", true)
+    end
+    return nil
 end
 
-local function FullName(i)
-    local ok, s = pcall(function() return i:GetFullName() end)
-    return ok and s or tostring(i)
+function IsAliveModel(m)
+    local h = m and m:FindFirstChildOfClass("Humanoid")
+    return h ~= nil and h.Health > 0
 end
 
--- =========================================================
--- GOD FPS
--- =========================================================
+function StripName(n)
+    return (string.lower(n):gsub("[%s%p_]+", ""))
+end
 
-local GodFPSGui = nil
-local GodFPSOriginals = {}
-local GodFPSOriginalLighting = {}
+function IsSnowman(m)
+    return string.find(StripName(m.Name), "pumpkinsnowman", 1, true) ~= nil
+end
 
-local function CreateGodFPSOverlay()
+function IsJack(m)
+    local low = StripName(m.Name)
+    return string.find(low, "jackolantern", 1, true) ~= nil or string.find(low, "lantern", 1, true) ~= nil
+end
+
+function IsDapperJack(m)
+    return FocusDapperJack and StripName(m.Name) == "dapperjack"
+end
+
+function BossActive(inst)
+    return inst ~= nil and inst:GetAttribute("BOSS_ACTIVE_SERVER") == true
+end
+
+function IsHellfireGas(m)
+    return string.find(StripName(m.Name), "hellfiregas", 1, true) ~= nil
+end
+
+function IsFocus(m)
+    return IsSnowman(m) or IsJack(m) or IsHellfireGas(m) or IsDapperJack(m)
+end
+
+function HasM1Tag(i)
+    local ok, t = pcall(function() return CollectionService:HasTag(i, "M1HitRegistry") end)
+    return ok and t == true
+end
+
+function Visible(p)
+    if not p or not p.Parent then return false end
+    if GodFPS then return true end
+    return p.Transparency < 0.98 and p.LocalTransparencyModifier < 0.98
+end
+
+function AnyVisible(obj)
+    if obj:IsA("BasePart") then return Visible(obj) end
+    for _, v in ipairs(obj:GetDescendants()) do
+        if v:IsA("BasePart") and Visible(v) then return true end
+    end
+    return false
+end
+
+function EventKind(ev)
+    if type(ev) ~= "string" then return "game" end
+    local low = string.lower(ev)
+    if ev == "Boss Fight" or string.find(low, "hell", 1, true) then return "boss" end
+    return "game"
+end
+
+function ToolMatches(t)
+    if not t or not t:IsA("Tool") then return false end
+    return t.ToolTip == SelectedToolType
+        or t.Name:lower():find(SelectedToolType:lower(), 1, true) ~= nil
+end
+
+function EnsureTool()
+    if os.clock() - LastEquip < 1 then return end
+    LastEquip = os.clock()
+    local char = Player.Character
+    local _, hum = GetParts()
+    if not char or not hum then return end
+    if ToolMatches(char:FindFirstChildOfClass("Tool")) then return end
+    local bp = Player:FindFirstChild("Backpack")
+    if not bp then return end
+    for _, item in ipairs(bp:GetChildren()) do
+        if ToolMatches(item) then
+            hum:EquipTool(item)
+            return
+        end
+    end
+end
+
+function FaceTo(target)
+    if not LockCF then return end
+    local pos = LockCF.Position
+    local flat = Vector3.new(target.X, pos.Y, target.Z)
+    if (flat - pos).Magnitude > 0.5 then
+        LockCF = CFrame.lookAt(pos, flat)
+    end
+end
+
+function WaterFloor(pos)
+    if pos.Y < -1000 then return nil end
+    local now = os.clock()
+    if now - WaterSlabAt > 2 or not (WaterSlabRef and WaterSlabRef.Parent) then
+        WaterSlabAt = now
+        local map = Workspace:FindFirstChild("Map")
+        local p = map and map:FindFirstChild("WaterBase-Plane")
+        WaterSlabRef = (p and p:IsA("BasePart")) and p or nil
+    end
+    local slab = WaterSlabRef
+    if not slab then return nil end
+    local lp = slab.CFrame:PointToObjectSpace(pos)
+    local sz = slab.Size
+    if math.abs(lp.X) > sz.X / 2 or math.abs(lp.Z) > sz.Z / 2 then return nil end
+    return slab.Position.Y + math.max(sz.Y / 2, 56) + CFG.WaterClearance
+end
+
+BodyStepConn = RunService.Stepped:Connect(function()
+    if Destroyed or not Holding then return end
+    local char = Player.Character
+    if not char then return end
+    if char ~= CharCacheChar or os.clock() - CharCacheAt > 0.5 then
+        CharCacheChar = char
+        CharCacheAt = os.clock()
+        CharCache = {}
+        for _, d in ipairs(char:GetDescendants()) do
+            if d:IsA("BasePart") then table.insert(CharCache, d) end
+        end
+    end
+    for _, p in ipairs(CharCache) do
+        if p.Parent then
+            if SavedCollide[p] == nil then SavedCollide[p] = p.CanCollide end
+            p.CanCollide = false
+        end
+    end
+end)
+table.insert(CONNS, BodyStepConn)
+
+BodyHeartConn = RunService.Heartbeat:Connect(function(dt)
+    if Destroyed or not Holding then return end
+    local char = Player.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not root or not hum or hum.Health <= 0 then return end
+    hum.AutoRotate = false
+    if not LockCF then
+        LockCF = root.CFrame
+    elseif LastWritten and (root.Position - LastWritten).Magnitude > 50 then
+        LockCF = root.CFrame
+    end
+    if Travel then
+        local cur = LockCF.Position
+        local diff = Travel - cur
+        local d = diff.Magnitude
+        if d <= 0.5 then
+            Travel = nil
+        else
+            local np = cur + diff.Unit * math.min(d, CFG.Speed * dt)
+            local flat = Vector3.new(diff.X, 0, diff.Z)
+            if flat.Magnitude > 0.1 then
+                LockCF = CFrame.lookAt(np, np + flat)
+            else
+                LockCF = CFrame.new(np)
+            end
+        end
+    end
+    local pos = LockCF.Position
+    local fy = WaterFloor(pos)
+    if fy and pos.Y < fy then
+        LockCF = LockCF + Vector3.new(0, fy - pos.Y, 0)
+    end
+    root.CFrame = LockCF
+    LastWritten = LockCF.Position
+    root.AssemblyLinearVelocity = Vector3.zero
+    root.AssemblyAngularVelocity = Vector3.zero
+end)
+table.insert(CONNS, BodyHeartConn)
+
+function Release()
+    Holding = false
+    Travel = nil
+    LockCF = nil
+    LastWritten = nil
+    for part, was in pairs(SavedCollide) do
+        if part.Parent then pcall(function() part.CanCollide = was end) end
+    end
+    SavedCollide = {}
+    local char = Player.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then pcall(function() hum.AutoRotate = true end) end
+end
+
+function GoTo(pos, stop, timeout, abort)
+    Holding = true
+    stop = stop or 3
+    timeout = timeout or 15
+    local root = GetParts()
+    if not root then return false end
+    if not LockCF then LockCF = root.CFrame end
+    local fy = WaterFloor(pos)
+    if fy and pos.Y < fy then pos = Vector3.new(pos.X, fy, pos.Z) end
+    local t0 = os.clock()
+    while not Destroyed and Holding do
+        if not LockCF then break end
+        if (LockCF.Position - pos).Magnitude <= stop then break end
+        if os.clock() - t0 > timeout then break end
+        if abort and abort() then break end
+        if not GetParts() then break end
+        Travel = pos
+        task.wait(0.05)
+    end
+    local ok = LockCF ~= nil and (LockCF.Position - pos).Magnitude <= stop + 2
+    Travel = nil
+    return ok
+end
+
+function GoAuto(pos, stop, abort)
+    local root = GetParts()
+    local d = root and (root.Position - pos).Magnitude or 0
+    return GoTo(pos, stop, math.max(12, d / CFG.Speed + 6), abort)
+end
+
+function TryActivateHaki()
+    local root, hum = GetParts()
+    if not root or not hum then return end
+    local char = Player.Character
+    if not char or char:FindFirstChild("HasBuso") then return end
+    local cf = CommFRemote()
+    if cf then pcall(function() cf:InvokeServer("Buso") end) end
+end
+
+function NearestTarget(maxDist)
+    local folder = Workspace:FindFirstChild("Enemies")
+    local root = GetParts()
+    if not folder or not root then return nil end
+    local ev = EventOn()
+    local inDomain = HS.domain ~= nil
+    local bestF, bdF = nil, maxDist
+    local bestO, bdO = nil, maxDist
+    local now = os.clock()
+    for _, m in ipairs(folder:GetChildren()) do
+        if m:IsA("Model") and (HS.ignored[m] or 0) < now and IsAliveModel(m) and AnyVisible(m) then
+            local p = PartOf(m)
+            if p then
+                local d = (p.Position - root.Position).Magnitude
+                if inDomain or IsFocus(m) then
+                    if d < bdF then bestF, bdF = m, d end
+                elseif ev and (not HellfireGasOnly or IsHellfireGas(m)) then
+                    if d < bdO then bestO, bdO = m, d end
+                end
+            end
+        end
+    end
+    if bestF then return bestF end
+    return bestO
+end
+
+function HitMobs(m, root)
+    local ra = NetRemote("RegisterAttack")
+    local rh = NetRemote("RegisterHit")
+    if not ra or not rh then return false end
+    local head = m:FindFirstChild("Head") or root
+    pcall(function() ra:FireServer(0) end)
+    if HitVariant == "new" then
+        pcall(function() rh:FireServer(head, { { m, root }, m }, nil, "078da341") end)
+    else
+        pcall(function() rh:FireServer(head, { { m, head } }) end)
+    end
+    return true
+end
+
+function FightEnemy(m)
+    Holding = true
+    local hum = m:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+    HS.target = m
+    HS.lastFight = os.clock()
+    local t0 = os.clock()
+    local hpSeen = hum.Health
+    local swings, lands = 0, 0
+    while not Destroyed and Engaged() and m.Parent and hum.Health > 0 and AnyVisible(m) do
+        if os.clock() - t0 > CFG.EnemyTimeout then
+            HS.ignored[m] = os.clock() + CFG.EnemyIgnoreTime
+            break
+        end
+        local root = GetParts()
+        local part = PartOf(m)
+        if not root or not part then break end
+        local hover = part.Position + Vector3.new(0, CFG.HoverHeight, 0)
+        Travel = hover
+        HS.lastFight = os.clock()
+        if LockCF and (LockCF.Position - hover).Magnitude <= 4 then
+            FaceTo(part.Position)
+            if (LockCF.Position - part.Position).Magnitude <= CFG.HitRange then
+                EnsureTool()
+                HitMobs(m, m:FindFirstChild("HumanoidRootPart") or part)
+                swings += 1
+                if hum.Health < hpSeen then
+                    lands += 1
+                    hpSeen = hum.Health
+                elseif hum.Health > hpSeen then
+                    hpSeen = hum.Health
+                end
+                if swings >= 10 then
+                    if lands == 0 and AutoHitVariant then
+                        HitVariant = (HitVariant == "new") and "old" or "new"
+                        HS.note = "trocando formato do hit para " .. HitVariant
+                    end
+                    swings, lands = 0, 0
+                end
+            end
+        end
+        task.wait(CFG.AttackDelay)
+    end
+    if hum.Health <= 0 or not m.Parent then
+        HS.tally.kills += 1
+    end
+    HS.target = nil
+    Travel = nil
+end
+
+DoorAddedConn = Workspace.DescendantAdded:Connect(function(d)
+    if d.Name == "HalloweenDoor" then HS.doorSet[d] = true end
+end)
+table.insert(CONNS, DoorAddedConn)
+
+task.spawn(function()
+    local id = RUN_ID
+    local map = Workspace:FindFirstChild("Map")
+    if not map or RUN_ID ~= id then return end
+    for _, d in ipairs(map:GetDescendants()) do
+        if d.Name == "HalloweenDoor" then HS.doorSet[d] = true end
+    end
+end)
+
+function DoorList()
+    local out = {}
+    for d in pairs(HS.doorSet) do
+        if d.Parent and d:IsDescendantOf(Workspace) then
+            local prox = d:FindFirstChild("Proximity")
+            if prox and prox:IsA("BasePart") then
+                local pr = prox:FindFirstChildOfClass("ProximityPrompt")
+                table.insert(out, {
+                    inst = d,
+                    pos = prox.Position,
+                    prompt = pr,
+                    open = d:GetAttribute("DoorOpen") == true,
+                    cool = tonumber(d:GetAttribute("CooldownUntil")) or 0,
+                    enabled = pr and pr.Enabled,
+                    skip = HS.doorSkip[d] or 0,
+                })
+            end
+        else
+            HS.doorSet[d] = nil
+        end
+    end
+    return out
+end
+
+function PickDoor(list, from)
+    local now = os.clock()
+    local serverNow = ServerNow()
+    local best, bd = nil, math.huge
+    for _, d in ipairs(list) do
+        if not d.open and d.cool <= serverNow and d.enabled ~= false and d.skip <= now then
+            local dist = (d.pos - from).Magnitude
+            if dist < bd then best, bd = d, dist end
+        end
+    end
+    return best
+end
+
+function HoldPrompt(pr)
+    if fireproximityprompt then
+        pcall(fireproximityprompt, pr)
+        return
+    end
+    local d = tonumber(pr.HoldDuration) or 0
+    if not pcall(function() pr:InputHoldBegin() end) then return end
+    task.wait(d + 0.25)
+    pcall(function() pr:InputHoldEnd() end)
+end
+
+function KnockDoor(d)
+    Holding = true
+    local root = GetParts()
+    if not root then return end
+    local out = Vector3.new(root.Position.X - d.pos.X, 0, root.Position.Z - d.pos.Z)
+    if out.Magnitude < 1 then out = Vector3.new(0, 0, 1) end
+    local stand = d.pos + out.Unit * CFG.KnockStand + Vector3.new(0, 1, 0)
+    if (root.Position - stand).Magnitude > 4 then
+        HS.mode = "INDO PARA PORTA"
+        if not GoAuto(stand, 2) then
+            HS.doorSkip[d.inst] = os.clock() + CFG.DoorSkip
+            return
+        end
+    end
+    FaceTo(d.pos)
+    HS.door = nil
+    HS.mode = "BATENDO"
+    task.wait(1.25)
+    local _, fn = HalloweenRemotes()
+    if fn then task.spawn(function() pcall(function() fn:InvokeServer(d.inst) end) end) end
+    local t0 = os.clock()
+    while os.clock() - t0 < 5 and not HS.door and Engaged() do task.wait(0.1) end
+    if HS.door then
+        HS.tally.doors += 1
+    else
+        HS.doorSkip[d.inst] = os.clock() + CFG.DoorSkip
+        HS.note = "porta sem resposta"
+    end
+end
+
+function PortalPos()
+    local d = HS.portalDoor
+    if not (d and d.Parent) or os.clock() - HS.portalAt > 90 or not BossActive(d) then return nil end
+    local dp = d:FindFirstChild("Part") or d:FindFirstChild("Proximity")
+    local near, best = nil, 60
+    for _, c in ipairs(Workspace:GetChildren()) do
+        if c.Name == "comm" and c:IsA("BasePart") and dp then
+            local dist = (c.Position - dp.Position).Magnitude
+            if dist < best then near, best = c.Position, dist end
+        end
+    end
+    return near or (dp and dp:IsA("BasePart") and dp.Position) or nil
+end
+
+function EnterPortal(pt)
+    Holding = true
+    local root = GetParts()
+    if not root then return end
+    if (root.Position - pt).Magnitude > 8 then
+        HS.mode = "INDO AO PORTAL"
+        if not GoAuto(pt + Vector3.new(0, 2, 0), 2) then return end
+    end
+    local r2 = GetParts()
+    local start = r2 and r2.Position or pt
+    HS.mode = "PORTAL HELLFIRE"
+    local t0 = os.clock()
+    while os.clock() - t0 < CFG.PortalWait and not HS.domain and Engaged() do
+        local r3 = GetParts()
+        if r3 and (r3.Position - start).Magnitude > 1000 then
+            HS.domain = { at = os.clock() }
+            HS.lastFight = os.clock()
+        end
+        task.wait(0.1)
+    end
+end
+
+function ListenHalloween()
+    if HS.listening then return end
+    local ev = HalloweenRemotes()
+    if not ev then return end
+    HS.listening = true
+    local id = RUN_ID
+    local conn = ev.OnClientEvent:Connect(function(kind, inst, who, data)
+        if RUN_ID ~= id or Destroyed then return end
+        if kind == "DoorOpened" then
+            local evName = type(data) == "table" and data.Event or nil
+            local isBoss = (type(data) == "table" and data.Boss == true) or EventKind(evName) == "boss"
+            if who == Player then
+                HS.door = { inst = inst, event = evName, boss = isBoss, at = os.clock(), accepted = false, done = false }
+                if isBoss then HS.tally.bosses += 1 end
+            end
+            if isBoss then
+                HS.portalDoor = inst
+                HS.portalAt = os.clock()
+            end
+        elseif kind == "EventFinished" then
+            if HS.door and HS.door.inst == inst then HS.door.done = true end
+        elseif kind == "HellfireBossDeath" then
+            HS.tally.bossKills += 1
+        elseif kind == "HellfireBossExit" then
+            HS.domain = nil
+            HS.door = nil
+        elseif kind == "BossTeleportSound" then
+            if os.clock() - HS.portalAt < 90 then
+                HS.domain = { at = os.clock() }
+                HS.lastFight = os.clock()
+                if HS.door and HS.door.boss then HS.door.done = true end
+            end
+        elseif kind == "PromptEventTeleport" then
+            if AcceptTeleport then
+                task.delay(1, function() FireEvent("AcceptEventTeleport") end)
+            end
+        elseif kind == "PromptEventReturn" then
+            task.delay(1, function() FireEvent("AcceptTeleportReturn") end)
+        end
+    end)
+    table.insert(CONNS, conn)
+end
+
+function PressM1()
+    local cam = Workspace.CurrentCamera
+    if not cam then return end
+    local vs = cam.ViewportSize
+    pcall(function() VIM:SendMouseButtonEvent(vs.X / 2, vs.Y / 2, 0, true, game, 0) end)
+    task.wait(0.05)
+    pcall(function() VIM:SendMouseButtonEvent(vs.X / 2, vs.Y / 2, 0, false, game, 0) end)
+end
+
+function ListPumpkins()
+    local out = {}
+    local folder = Workspace:FindFirstChild("PumpkinHunt")
+    if not folder then return out end
+    local now = os.clock()
+    for _, m in ipairs(folder:GetChildren()) do
+        local cracked = m:GetAttribute("PumpkinCrackedBy")
+        local others = SkipOthersPumpkins and cracked ~= nil and cracked ~= Player.UserId
+        if (m:IsA("Model") or m:IsA("BasePart")) and now >= (HS.skip[m] or 0) and not others then
+            local hits, body, bv, prompt, detector = {}, nil, -1, nil, nil
+            local scan = m:IsA("BasePart") and { m } or m:GetDescendants()
+            for _, d in ipairs(scan) do
+                if d:IsA("BasePart") and d.Transparency == 0 then
+                    if HasM1Tag(d) then table.insert(hits, d) end
+                    local v = d.Size.X * d.Size.Y * d.Size.Z
+                    if v > bv then body, bv = d, v end
+                elseif not prompt and d:IsA("ProximityPrompt") and d.Enabled then
+                    prompt = d
+                elseif not detector and d:IsA("ClickDetector") then
+                    detector = d
+                end
+            end
+            if body then
+                table.insert(out, {
+                    root = m,
+                    part = hits[1] or body,
+                    hits = hits,
+                    pos = body.Position,
+                    prompt = prompt,
+                    detector = detector,
+                    tagged = #hits > 0,
+                    rare = m:GetAttribute("PumpkinRare") == true,
+                })
+            end
+        end
+    end
+    return out
+end
+
+function PickPumpkin(list, from, rareFirst)
+    local best, bd, br = nil, math.huge, false
+    for _, c in ipairs(list) do
+        local d = (c.pos - from).Magnitude
+        local rare = rareFirst and c.rare == true
+        if (rare and not br) or (rare == br and d < bd) then
+            best, bd, br = c, d, rare
+        end
+    end
+    return best
+end
+
+function WayOrder(c, learned)
+    local out, seen = {}, {}
+    local function add(w)
+        if not seen[w] then
+            seen[w] = true
+            table.insert(out, w)
+        end
+    end
+    if c.prompt then add("prompt") end
+    if c.detector then add("detector") end
+    if learned then add(learned) end
+    if #c.hits > 0 then add("remote") end
+    add("click")
+    add("remote")
+    return out
+end
+
+function FireWay(way, c)
+    if way == "prompt" and c.prompt then
+        HoldPrompt(c.prompt)
+    elseif way == "detector" and c.detector then
+        if fireclickdetector then pcall(fireclickdetector, c.detector) end
+    elseif way == "remote" then
+        local ra = NetRemote("RegisterAttack")
+        local rh = NetRemote("RegisterHit")
+        if ra then pcall(function() ra:FireServer(0) end) end
+        if rh then
+            local hits = (#c.hits > 0) and c.hits or { c.part }
+            for _, p in ipairs(hits) do
+                if p.Parent then pcall(function() rh:FireServer(p) end) end
+            end
+        end
+    else
+        PressM1()
+    end
+end
+
+function PumpkinAlive(c)
+    local m = c.root
+    if not m.Parent or not m:IsDescendantOf(Workspace) then return false end
+    if m:IsA("BasePart") and m.Transparency ~= 0 then return false end
+    for _, d in ipairs(m:GetDescendants()) do
+        if d:IsA("BasePart") and d.Transparency == 0 then return true end
+    end
+    return m:IsA("BasePart") and m.Transparency == 0
+end
+
+function SmashPumpkin(c)
+    Holding = true
+    local root = GetParts()
+    if not root then return end
+    local away = Vector3.new(root.Position.X - c.pos.X, 0, root.Position.Z - c.pos.Z)
+    if away.Magnitude < 1 then away = Vector3.new(1, 0, 0) end
+    local stand = c.pos + away.Unit * 4 + Vector3.new(0, 1.5, 0)
+    if (root.Position - stand).Magnitude > 6 then
+        HS.mode = "INDO ABÓBORA"
+        if not GoAuto(stand, 3) then
+            HS.skip[c.root] = os.clock() + CFG.PumpkinSkip
+            HS.note = "sem caminho até " .. c.root.Name
+            return
+        end
+    end
+    if not PumpkinAlive(c) then return end
+    HS.mode = "ABÓBORA"
+    FaceTo(c.pos)
+    EnsureTool()
+    for _, way in ipairs(WayOrder(c, HS.way)) do
+        local n = 0
+        while n < CFG.PerWay do
+            n += 1
+            if not PumpkinAlive(c) then
+                HS.tally.pumpkins += 1
+                if c.rare then HS.tally.rare += 1 end
+                if HS.way ~= way then
+                    HS.way = way
+                    SaveStates()
+                end
+                return
+            end
+            FireWay(way, c)
+            task.wait(CFG.Swing)
+        end
+    end
+    HS.skip[c.root] = os.clock() + CFG.PumpkinSkip
+end
+
+function NearestFruit()
+    local root = GetParts()
+    if not root then return nil end
+    local best, bd = nil, math.huge
+    local now = os.clock()
+    for _, obj in ipairs(Workspace:GetChildren()) do
+        if string.find(string.lower(obj.Name), "fruit", 1, true) and (HS.fruitSkip[obj] or 0) < now then
+            local h = obj:IsA("BasePart") and obj or obj:FindFirstChild("Handle")
+            if h and h:IsA("BasePart") then
+                local d = (h.Position - root.Position).Magnitude
+                if d < bd then best, bd = { model = obj, handle = h }, d end
+            end
+        end
+    end
+    return best
+end
+
+function GrabFruit(f)
+    Holding = true
+    local h = f.handle
+    HS.mode = "FRUTA"
+    HS.note = "pegando " .. f.model.Name
+    if not GoAuto(h.Position, 2) then
+        HS.fruitSkip[f.model] = os.clock() + 30
+        return
+    end
+    local t0 = os.clock()
+    while os.clock() - t0 < 6 and h:IsDescendantOf(Workspace) do
+        local root = GetParts()
+        if root and firetouchinterest then
+            pcall(firetouchinterest, root, h, 0)
+            pcall(firetouchinterest, root, h, 1)
+        end
+        task.wait(0.15)
+    end
+    if h:IsDescendantOf(Workspace) then
+        HS.fruitSkip[f.model] = os.clock() + CFG.FruitSkip
+    else
+        HS.tally.fruits += 1
+    end
+end
+
+function UpdStFruit()
+    local backpack = Player:FindFirstChild("Backpack")
+    if not backpack then return end
+    local commF = CommFRemote()
+    for _, item in ipairs(backpack:GetChildren()) do
+        if Destroyed then break end
+        local eatRemote = item:FindFirstChild("EatRemote", true)
+        if eatRemote then
+            local parent = eatRemote.Parent
+            local originalName = parent and parent:GetAttribute("OriginalName")
+            local fruitTool = backpack:FindFirstChild(item.Name)
+            if originalName and fruitTool and commF then
+                pcall(function() commF:InvokeServer("StoreFruit", originalName, fruitTool) end)
+            end
+        end
+    end
+end
+
+function MainStep()
+    if not Engaged() then
+        Release()
+        task.wait(0.5)
+        return
+    end
+    ListenHalloween()
+    local root = GetParts()
+    if not root then
+        HS.mode = "SEM PERSONAGEM"
+        task.wait(0.5)
+        return
+    end
+
+    local now = os.clock()
+    if HS.domain and now - math.max(HS.domain.at, HS.lastFight) > CFG.DomainTimeout then
+        HS.domain = nil
+    end
+
+    if AutoAttack then
+        local m = NearestTarget(HS.domain and CFG.DomainSearch or CFG.TargetSearch)
+        if m then
+            HS.mode = "COMBATE"
+            HS.note = (IsFocus(m) and "foco: " or "evento: ") .. m.Name
+            FightEnemy(m)
+            return
+        end
+    end
+
+    local d = HS.door
+    if d and not d.done then
+        if now - d.at > CFG.DoorMax or not (d.inst and d.inst.Parent) then
+            HS.door = nil
+        elseif d.boss then
+            local pt = (HalloweenDoors and HellfirePortal) and PortalPos() or nil
+            if pt then
+                EnterPortal(pt)
+                return
+            end
+            if not (HalloweenDoors and HellfirePortal) or now - d.at > 15 then
+                d.done = true
+            else
+                HS.mode = "ESPERANDO PORTAL"
+                Release()
+                task.wait(0.25)
+                return
+            end
+        else
+            HS.mode = "EVENTO"
+            Release()
+            if not d.accepted and now - d.at > 2 then
+                d.accepted = true
+                FireEvent(AcceptRewards and "AcceptReward" or "DeclineReward")
+            end
+            task.wait(0.25)
+            return
+        end
+    end
+
+    if HS.domain then
+        HS.mode = "DOMÍNIO"
+        Release()
+        task.wait(0.25)
+        return
+    end
+
+    if HalloweenDoors and EventOn() then
+        local list = DoorList()
+        local spot = SeaSpot()
+        local door = PickDoor(list, (GoDoorSpot and spot) or root.Position)
+        if door then
+            KnockDoor(door)
+            return
+        end
+        if GoDoorSpot and spot and (root.Position - spot).Magnitude > 80 then
+            HS.mode = "INDO PARA AS PORTAS"
+            GoAuto(spot, 10)
+            return
+        end
+        if #list == 0 and AcceptTeleport then
+            local hour = os.date("!%Y%m%d%H")
+            if HS.tpHour ~= hour then
+                HS.tpHour = hour
+                HS.mode = "TELETRANSPORTE"
+                local tr = GetParts()
+                if tr then
+                    Holding = true
+                    LockCF = tr.CFrame
+                    Travel = nil
+                end
+                FireEvent("AcceptEventTeleport")
+                task.wait(6)
+                Release()
+                return
+            end
+        end
+    end
+
+    if GodFarm then
+        local c = PickPumpkin(ListPumpkins(), root.Position, HalloweenRareFirst)
+        if c then
+            SmashPumpkin(c)
+            return
+        end
+    end
+
+    if AutoBringFruits then
+        local f = NearestFruit()
+        if f then
+            GrabFruit(f)
+            return
+        end
+    end
+
+    HS.mode = "ESPERANDO"
+    Release()
+    task.wait(CFG.IdleWait)
+end
+
+function BringEnemy()
+    if not AutoBring or not Engaged() then return end
+    local root = GetParts()
+    local enemies = Workspace:FindFirstChild("Enemies")
+    if not root or not enemies then return end
+    pcall(function()
+        if sethiddenproperty then sethiddenproperty(Player, "SimulationRadius", math.huge) end
+    end)
+    local lockPos = LockCF and LockCF.Position or root.Position
+    local target = lockPos - Vector3.new(0, CFG.HoverHeight, 0)
+    local range = math.clamp(CFG.BringRange, 1, 300)
+    local count = 0
+    for _, mob in ipairs(enemies:GetChildren()) do
+        if Destroyed or not AutoBring or count >= CFG.MaxBringMobs then break end
+        if mob:IsA("Model") and (IsSnowman(mob) or IsJack(mob)) and IsAliveModel(mob) and AnyVisible(mob) then
+            local mobRoot = mob:FindFirstChild("HumanoidRootPart")
+            if mobRoot and not mobRoot:GetAttribute("Tweening") then
+                local d = (mobRoot.Position - target).Magnitude
+                if d <= range then
+                    count += 1
+                    mobRoot:SetAttribute("Tweening", true)
+                    if BringTweens[mobRoot] then pcall(function() BringTweens[mobRoot]:Cancel() end) end
+                    local tw = TweenService:Create(mobRoot, TweenInfoBring, { CFrame = CFrame.new(target) })
+                    BringTweens[mobRoot] = tw
+                    tw.Completed:Once(function()
+                        if mobRoot and mobRoot.Parent then mobRoot:SetAttribute("Tweening", false) end
+                        BringTweens[mobRoot] = nil
+                    end)
+                    tw:Play()
+                end
+            end
+        end
+    end
+end
+
+function CreateBillboard(adornee)
+    local gui = Instance.new("BillboardGui")
+    gui.Name = "PumpkinESP"
+    gui.Adornee = adornee
+    gui.Size = UDim2.fromScale(0.5, 0.15)
+    gui.StudsOffset = Vector3.new(0, 3, 0)
+    gui.AlwaysOnTop = true
+    gui.MaxDistance = 2000
+    gui.Parent = adornee
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.fromScale(1, 1)
+    label.BackgroundTransparency = 1
+    label.TextStrokeTransparency = 0
+    label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    label.Font = Enum.Font.GothamBold
+    label.TextScaled = true
+    label.Text = ""
+    label.Parent = gui
+
+    return { gui = gui, label = label, adornee = adornee }
+end
+
+function ClearESP()
+    for _, data in pairs(ESPBillboards) do
+        pcall(function() data.gui:Destroy() end)
+    end
+    ESPBillboards = {}
+end
+
+function ShowLabel(key, part, text, color)
+    ESPActive[key] = true
+    local data = ESPBillboards[key]
+    if not data or not data.gui.Parent then
+        data = CreateBillboard(part)
+        ESPBillboards[key] = data
+    end
+    data.gui.Adornee = part
+    data.adornee = part
+    data.label.TextColor3 = color
+    data.label.Text = text
+end
+
+function UpdateESP()
+    local root = GetParts()
+    if not ShowESP or not root then
+        ClearESP()
+        return
+    end
+    ESPActive = {}
+
+    local pf = Workspace:FindFirstChild("PumpkinHunt")
+    if pf then
+        for _, obj in ipairs(pf:GetChildren()) do
+            local p = PartOf(obj)
+            if p and AnyVisible(obj) then
+                local dist = math.floor((p.Position - root.Position).Magnitude)
+                ShowLabel(obj, p, "Pumpkin [" .. dist .. "]", Color3.fromRGB(255, 170, 0))
+            end
+        end
+    end
+
+    local ef = Workspace:FindFirstChild("Enemies")
+    if ef then
+        for _, m in ipairs(ef:GetChildren()) do
+            if m:IsA("Model") and IsFocus(m) and IsAliveModel(m) then
+                local p = PartOf(m)
+                local h = m:FindFirstChildOfClass("Humanoid")
+                if p and h then
+                    local dist = math.floor((p.Position - root.Position).Magnitude)
+                    ShowLabel(m, p, m.Name .. " [" .. dist .. "] HP " .. math.floor(h.Health), Color3.fromRGB(255, 60, 60))
+                end
+            end
+        end
+    end
+
+    for key, data in pairs(ESPBillboards) do
+        if not ESPActive[key] or not data.gui.Parent or not data.adornee.Parent then
+            pcall(function() data.gui:Destroy() end)
+            ESPBillboards[key] = nil
+        end
+    end
+end
+
+function CreateGodFPSOverlay()
     if GodFPSGui and GodFPSGui.Parent then return end
-
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "GodFPSOverlay"
     screenGui.ResetOnSpawn = false
@@ -241,7 +1226,7 @@ local function CreateGodFPSOverlay()
     screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(1, 0, 1, 0)
+    frame.Size = UDim2.fromScale(1, 1)
     frame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
     frame.BackgroundTransparency = 1
     frame.BorderSizePixel = 0
@@ -252,7 +1237,7 @@ local function CreateGodFPSOverlay()
     GodFPSGui = screenGui
 end
 
-local function ApplyGodFPS()
+function ApplyGodFPS()
     CreateGodFPSOverlay()
     if GodFPSGui then
         local frame = GodFPSGui:FindFirstChildOfClass("Frame")
@@ -260,8 +1245,10 @@ local function ApplyGodFPS()
     end
 
     GodFPSOriginals = {}
+    local pumpkinFolder = Workspace:FindFirstChild("PumpkinHunt")
     for _, obj in ipairs(Workspace:GetDescendants()) do
-        if obj:IsA("BasePart") then
+        if pumpkinFolder and obj:IsDescendantOf(pumpkinFolder) then
+        elseif obj:IsA("BasePart") then
             GodFPSOriginals[obj] = { Transparency = obj.Transparency, LocalTransparencyModifier = obj.LocalTransparencyModifier }
             obj.Transparency = 1
             obj.LocalTransparencyModifier = 1
@@ -290,12 +1277,11 @@ local function ApplyGodFPS()
     Lighting.FogEnd = 100000
 end
 
-local function RestoreGodFPS()
+function RestoreGodFPS()
     if GodFPSGui then
         local frame = GodFPSGui:FindFirstChildOfClass("Frame")
         if frame then frame.BackgroundTransparency = 1 end
     end
-
     for obj, data in pairs(GodFPSOriginals) do
         if obj and obj.Parent then
             pcall(function()
@@ -306,7 +1292,6 @@ local function RestoreGodFPS()
         end
     end
     GodFPSOriginals = {}
-
     if GodFPSOriginalLighting.GlobalShadows ~= nil then
         Lighting.GlobalShadows = GodFPSOriginalLighting.GlobalShadows
         Lighting.Brightness = GodFPSOriginalLighting.Brightness
@@ -317,1229 +1302,212 @@ local function RestoreGodFPS()
     GodFPSOriginalLighting = {}
 end
 
--- =========================================================
--- WALK WATER
--- =========================================================
+FrameCount = 0
+FPSNow = 0
+FruitScan = {}
+StatusRows = {}
 
-task.spawn(function()
-    while not Destroyed do
-        pcall(function()
-            local Map = Workspace:FindFirstChild("Map")
-            local Water = Map and Map:FindFirstChild("WaterBase-Plane")
-            if Water and Water:IsA("BasePart") and not GodFPS then
-                Water.Size = WalkWater and Vector3.new(1000, 112, 1000) or Vector3.new(1000, 80, 1000)
+table.insert(CONNS, RunService.Heartbeat:Connect(function()
+    FrameCount += 1
+end))
+
+function FormatDur(sec)
+    sec = math.max(0, math.floor(sec))
+    return string.format("%02d:%02d:%02d", math.floor(sec / 3600), math.floor((sec % 3600) / 60), sec % 60)
+end
+
+function EventClock()
+    local t = os.date("!*t")
+    local secNow = t.min * 60 + t.sec
+    local endAt = CFG.EventMinutes * 60
+    if secNow < endAt then return true, endAt - secNow end
+    return false, 3600 - secNow
+end
+
+function PingMs()
+    local ok, p = pcall(function() return Player:GetNetworkPing() end)
+    if ok and type(p) == "number" then return math.floor(p * 1000) end
+    return -1
+end
+
+function ScanFruits()
+    local root = GetParts()
+    local out = {}
+    for _, obj in ipairs(Workspace:GetChildren()) do
+        if string.find(string.lower(obj.Name), "fruit", 1, true) then
+            local h = obj:IsA("BasePart") and obj or obj:FindFirstChild("Handle")
+            if h and h:IsA("BasePart") then
+                local d = root and math.floor((h.Position - root.Position).Magnitude) or -1
+                table.insert(out, { name = obj.Name, dist = d })
             end
-        end)
-        task.wait(1)
+        end
     end
-end)
+    table.sort(out, function(a, b) return a.dist < b.dist end)
+    return out
+end
 
--- =========================================================
--- ANTI-AFK / FRUTAS / GACHA / HAKI (loops lentos, não voam)
--- =========================================================
+function CountFocus()
+    local n = 0
+    local folder = Workspace:FindFirstChild("Enemies")
+    if folder then
+        for _, m in ipairs(folder:GetChildren()) do
+            if m:IsA("Model") and IsFocus(m) and IsAliveModel(m) and AnyVisible(m) then n += 1 end
+        end
+    end
+    return n
+end
 
-local AntiAFKConnection = Player.Idled:Connect(function()
+function CountDoorsReady()
+    local n = 0
+    local now = os.clock()
+    local serverNow = ServerNow()
+    for _, d in ipairs(DoorList()) do
+        if not d.open and d.cool <= serverNow and d.enabled ~= false and d.skip <= now then n += 1 end
+    end
+    return n
+end
+
+function StatusRow(fn)
+    local lbl = StatusTab:AddLabel("...")
+    table.insert(StatusRows, { label = lbl, fn = fn })
+end
+
+function StatusText()
+    return string.format("%s · alvos %d · bosses %d · abóboras %d · portas %d · frutas %d · %s",
+        HS.mode, HS.tally.kills, HS.tally.bosses, HS.tally.pumpkins, HS.tally.doors, HS.tally.fruits, HS.note)
+end
+
+function Cleanup()
+    if Destroyed then return end
+    SaveStates()
+    Destroyed = true
+    GodFarm = false
+    AutoAttack = false
+    AutoRollStore = false
+    AutoBring = false
+    AutoBringFruits = false
+    AutoHaki = false
+    ShowESP = false
+    HalloweenDoors = false
+    if GodFPS then
+        RestoreGodFPS()
+        GodFPS = false
+    end
+    if GodFPSGui then
+        pcall(function() GodFPSGui:Destroy() end)
+        GodFPSGui = nil
+    end
+    Release()
+    ClearESP()
+    for root, tween in pairs(BringTweens) do
+        pcall(function() tween:Cancel() end)
+        if root and root.Parent then root:SetAttribute("Tweening", false) end
+    end
+    BringTweens = {}
+    for _, conn in ipairs(CONNS) do
+        pcall(function() conn:Disconnect() end)
+    end
+    CONNS = {}
+    print("[Pumpkin Hunt] Sistema encerrado.")
+end
+
+Env.PumpkinHuntCleanup = Cleanup
+
+table.insert(CONNS, Player.Idled:Connect(function()
     if Destroyed then return end
     pcall(function()
         VirtualUser:CaptureController()
         VirtualUser:ClickButton2(Vector2.new(0, 0))
     end)
-end)
-
-local function UpdStFruit()
-    local Backpack = Player:FindFirstChild("Backpack")
-    if not Backpack then return end
-    local R = GetRemotes()
-
-    for _, item in ipairs(Backpack:GetChildren()) do
-        if Destroyed then break end
-        local EatRemote = item:FindFirstChild("EatRemote", true)
-        if EatRemote then
-            local parent = EatRemote.Parent
-            local OriginalName = parent and parent:GetAttribute("OriginalName")
-            local FruitTool = Backpack:FindFirstChild(item.Name)
-            if OriginalName and FruitTool and R.CommF then
-                pcall(function()
-                    R.CommF:InvokeServer("StoreFruit", OriginalName, FruitTool)
-                end)
-            end
-        end
-    end
-end
-
-local function CollectFruits()
-    if not AutoBringFruits then return end
-    UpdateCharacter()
-    if not Root then return end
-
-    for _, obj in ipairs(Workspace:GetChildren()) do
-        if Destroyed or not AutoBringFruits then break end
-        if obj.Name:find("Fruit") then
-            local Handle = obj:FindFirstChild("Handle")
-            if Handle and Handle:IsA("BasePart") then
-                pcall(function() Handle.CFrame = Root.CFrame end)
-            end
-        end
-    end
-end
-
-task.spawn(function()
-    while not Destroyed do
-        if AutoBringFruits then pcall(CollectFruits) end
-        task.wait(0.4)
-    end
-end)
-
-task.spawn(function()
-    while not Destroyed do
-        if AutoRollStore then
-            local R = GetRemotes()
-            if R.Gacha and R.Gacha:IsA("RemoteFunction") then
-                pcall(function()
-                    R.Gacha:InvokeServer({ Context = "Purchase", BoxName = "Halloween26Gacha" })
-                end)
-            end
-            UpdStFruit()
-        end
-        task.wait(5)
-    end
-end)
-
-local function TryActivateHaki()
-    if not AutoHaki then return end
-    UpdateCharacter()
-    if not Character or not Humanoid or Humanoid.Health <= 0 then return end
-    if Character:FindFirstChild("HasBuso") then return end
-    local R = GetRemotes()
-    if R.CommF then pcall(function() R.CommF:InvokeServer("Buso") end) end
-end
-
-task.spawn(function()
-    while not Destroyed do
-        if AutoHaki then TryActivateHaki() end
-        task.wait(2)
-    end
-end)
-
--- =========================================================
--- FERRAMENTA (só equipa quando algo vai atacar)
--- =========================================================
-
-local function ToolMatches(t)
-    if not t or not t:IsA("Tool") then return false end
-    return t.ToolTip == SelectedToolType
-        or t.Name:lower():find(SelectedToolType:lower(), 1, true) ~= nil
-end
-
-local LastEquip = 0
-local function EnsureTool()
-    if os.clock() - LastEquip < 1 then return end
-    LastEquip = os.clock()
-
-    UpdateCharacter()
-    if not Character or not Humanoid or Humanoid.Health <= 0 then return end
-    if ToolMatches(Character:FindFirstChildOfClass("Tool")) then return end
-
-    local bp = Player:FindFirstChild("Backpack")
-    if not bp then return end
-    for _, item in ipairs(bp:GetChildren()) do
-        if ToolMatches(item) then
-            Humanoid:EquipTool(item)
-            return
-        end
-    end
-end
-
--- =========================================================
--- VOO (único controlador; só liga quando há destino)
--- =========================================================
-
-local Flight = {
-    body = nil,
-    gyro = nil,
-    noclip = nil,
-    origCollide = {},
-    origAutoRotate = nil,
-    origPlatform = nil,
-}
-local Nav = nil
-local FlightVelocity = Vector3.zero
-local FlightConnection
-
-local function StartFlight()
-    UpdateCharacter()
-    if not Root or not Humanoid or not Character or Humanoid.Health <= 0 then return false end
-    if Flight.body and Flight.body.Parent then return true end
-
-    Flight.origAutoRotate = Humanoid.AutoRotate
-    Flight.origPlatform = Humanoid.PlatformStand
-    Humanoid.AutoRotate = false
-    Humanoid.PlatformStand = true
-
-    FlightVelocity = Vector3.zero
-
-    local bv = Instance.new("BodyVelocity")
-    bv.Name = "PumpkinStableVelocity"
-    bv.MaxForce = Vector3.new(1e9, 1e9, 1e9)
-    bv.P = 18000
-    bv.Velocity = Vector3.zero
-    bv.Parent = Root
-    Flight.body = bv
-
-    local bg = Instance.new("BodyGyro")
-    bg.Name = "PumpkinStableGyro"
-    bg.MaxTorque = Vector3.new(1e9, 1e9, 1e9)
-    bg.P = 18000
-    bg.D = 1200
-    bg.CFrame = Root.CFrame
-    bg.Parent = Root
-    Flight.gyro = bg
-
-    Flight.origCollide = {}
-    for _, p in ipairs(Character:GetDescendants()) do
-        if p:IsA("BasePart") then Flight.origCollide[p] = p.CanCollide end
-    end
-
-    if Flight.noclip then Flight.noclip:Disconnect() end
-    Flight.noclip = RunService.Stepped:Connect(function()
-        if not Character then return end
-        for _, p in ipairs(Character:GetDescendants()) do
-            if p:IsA("BasePart") then p.CanCollide = false end
-        end
-    end)
-
-    return true
-end
-
-local function StopFlight()
-    Nav = nil
-
-    if Flight.noclip then
-        Flight.noclip:Disconnect()
-        Flight.noclip = nil
-    end
-    if Flight.body then Flight.body:Destroy() Flight.body = nil end
-    if Flight.gyro then Flight.gyro:Destroy() Flight.gyro = nil end
-
-    for part, old in pairs(Flight.origCollide) do
-        if part and part.Parent then part.CanCollide = old end
-    end
-    Flight.origCollide = {}
-    FlightVelocity = Vector3.zero
-
-    UpdateCharacter()
-    if Humanoid and Humanoid.Health > 0 then
-        Humanoid.PlatformStand = Flight.origPlatform or false
-        Humanoid.AutoRotate = Flight.origAutoRotate ~= false
-        Humanoid.Sit = false
-        pcall(function() Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp) end)
-    end
-end
-
-local function MoveFlight(dest, stopDist, dt)
-    if not Flight.body or not Flight.gyro or not Root then return end
-
-    local diff = dest - Root.Position
-    local dist = diff.Magnitude
-    local desired = Vector3.zero
-
-    if dist > stopDist then
-        local dir = diff.Unit
-        local braking = math.max(Config.Speed * 0.15, 10)
-        local mult = math.clamp((dist - stopDist) / braking, 0, 1)
-        desired = dir * (Config.Speed * mult)
-
-        local look = CFrame.lookAt(Root.Position, Root.Position + dir)
-        Flight.gyro.CFrame = Flight.gyro.CFrame:Lerp(look, math.clamp(dt * 8, 0, 1))
-    end
-
-    FlightVelocity = FlightVelocity:Lerp(desired, math.clamp(dt * 12, 0, 1))
-    Flight.body.Velocity = FlightVelocity
-end
-
-FlightConnection = RunService.Heartbeat:Connect(function(dt)
-    if Destroyed or not (Flight.body and Flight.body.Parent) then return end
-    UpdateCharacter()
-    if not Root or not Humanoid or Humanoid.Health <= 0 then return end
-
-    if Nav then
-        MoveFlight(Nav.pos, Nav.stop, dt)
-    else
-        FlightVelocity = FlightVelocity:Lerp(Vector3.zero, math.clamp(dt * 12, 0, 1))
-        Flight.body.Velocity = FlightVelocity
-    end
-end)
-
--- Voa até uma posição e espera chegar. Retorna true se chegou.
-local function GoTo(pos, stop, timeout, abort)
-    stop = stop or 3
-    timeout = timeout or 15
-
-    if not StartFlight() then return false end
-    Nav = { pos = pos, stop = stop }
-
-    local t0 = os.clock()
-    while not Destroyed do
-        UpdateCharacter()
-        if not Root or not Humanoid or Humanoid.Health <= 0 then break end
-        if (Root.Position - pos).Magnitude <= stop + 2 then break end
-        if os.clock() - t0 > timeout then break end
-        if abort and abort() then break end
-        task.wait(0.05)
-    end
-
-    Nav = nil
-    return Root ~= nil and (Root.Position - pos).Magnitude <= stop + 5
-end
-
--- =========================================================
--- ALVOS (inimigos e abóboras)
--- =========================================================
-
-local Ignored = setmetatable({}, { __mode = "k" })
-
-local function PartOf(m)
-    if not m then return nil end
-    if m:IsA("BasePart") then return m end
-    if m:IsA("Model") then
-        return m:FindFirstChild("HumanoidRootPart")
-            or m.PrimaryPart
-            or m:FindFirstChildWhichIsA("BasePart", true)
-    end
-    return nil
-end
-
-local function IsAlive(m)
-    local h = m and m:FindFirstChildOfClass("Humanoid")
-    return h ~= nil and h.Health > 0
-end
-
-local function IsJackEnemy(m)
-    local n = string.lower(m.Name):gsub("[%s%p_]+", "")
-    return n:find("jack") ~= nil or n:find("lantern") ~= nil
-end
-
-local function IsRaidMob(m)
-    local n = string.lower(m.Name)
-    return n:find("raid") ~= nil or n:find("boss") ~= nil
-end
-
--- Qualquer inimigo vivo na pasta Enemies (Hellfire, Jack, etc.)
-local function NearestEnemy(maxDist)
-    local folder = Workspace:FindFirstChild("Enemies")
-    if not folder or not Root then return nil end
-
-    local best, bd = nil, maxDist
-    local now = os.clock()
-
-    for _, m in ipairs(folder:GetDescendants()) do
-        if m:IsA("Model") and m.Parent and IsAlive(m) and (Ignored[m] or 0) < now then
-            local p = PartOf(m)
-            if p then
-                local d = (p.Position - Root.Position).Magnitude
-                if d < bd then best, bd = m, d end
-            end
-        end
-    end
-
-    return best
-end
-
-local function IsVisible(obj)
-    if not obj or not obj.Parent then return false end
-    if obj:IsA("BasePart") then
-        return obj.Transparency < 0.98 and obj.LocalTransparencyModifier < 0.98
-    end
-    for _, v in ipairs(obj:GetDescendants()) do
-        if v:IsA("BasePart") and v.Transparency < 0.98 and v.LocalTransparencyModifier < 0.98 then
-            return true
-        end
-    end
-    return false
-end
-
-local LastAttack = 0
-local function AttackTarget(target, part)
-    local ra = Remote("RegisterAttack")
-    local rh = Remote("RegisterHit")
-    if not ra or not rh then return false end
-    if not target or not target.Parent or not part or not part.Parent then return false end
-
-    local now = os.clock()
-    if now - LastAttack < Config.AttackDelay then return false end
-    LastAttack = now
-
-    return (pcall(function()
-        ra:FireServer(0)
-        rh:FireServer(part, { { target, part } })
-    end))
-end
-
--- Luta contra um inimigo até morrer, sair de alcance ou estourar o tempo
-local function FightEnemy(m)
-    local t0 = os.clock()
-
-    while not Destroyed and m.Parent and IsAlive(m) do
-        if not Engaged() then break end
-
-        if os.clock() - t0 > Config.EnemyTimeout then
-            Ignored[m] = os.clock() + Config.EnemyIgnoreTime
-            break
-        end
-
-        UpdateCharacter()
-        if not Root or not Humanoid or Humanoid.Health <= 0 then break end
-
-        local part = PartOf(m)
-        if not part then break end
-
-        local head = m:FindFirstChild("Head") or part
-        local dist = (part.Position - Root.Position).Magnitude
-
-        if FlyMode() then
-            if StartFlight() then
-                Nav = { pos = part.Position + Vector3.new(0, Config.HoverHeight, 0), stop = 3 }
-            end
-        elseif dist > Config.AttackRadius then
-            break
-        end
-
-        if dist <= Config.AttackRadius then
-            EnsureTool()
-            AttackTarget(m, head)
-        end
-
-        task.wait(Config.AttackDelay)
-    end
-
-    Nav = nil
-end
-
--- Bring Jack (só God Farm)
-local TweenInfoBring = TweenInfo.new(0.35, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
-local BringTweens = {}
-
-local function BringEnemy()
-    if not GodFarm or not AutoBring then return end
-    local Enemies = Workspace:FindFirstChild("Enemies")
-    if not Enemies or not Root then return end
-
-    pcall(function()
-        if sethiddenproperty then sethiddenproperty(Player, "SimulationRadius", math.huge) end
-    end)
-
-    local target = Root.Position
-    local range = math.clamp(tonumber(_G.BringRange) or 300, 1, 300)
-    local maxMobs = math.clamp(tonumber(_G.MaxBringMobs) or 10, 1, 50)
-    local count = 0
-
-    for _, mob in ipairs(Enemies:GetChildren()) do
-        if Destroyed or not AutoBring or count >= maxMobs then break end
-
-        if mob:IsA("Model") and IsJackEnemy(mob) and not IsRaidMob(mob) and IsAlive(mob) then
-            local mobRoot = mob:FindFirstChild("HumanoidRootPart")
-            if mobRoot and not mobRoot:GetAttribute("Tweening") then
-                local d = (mobRoot.Position - target).Magnitude
-                if d <= range then
-                    count += 1
-                    mobRoot:SetAttribute("Tweening", true)
-
-                    if BringTweens[mobRoot] then pcall(function() BringTweens[mobRoot]:Cancel() end) end
-
-                    local tw = TweenService:Create(mobRoot, TweenInfoBring, { CFrame = CFrame.new(target) })
-                    BringTweens[mobRoot] = tw
-                    tw.Completed:Once(function()
-                        if mobRoot and mobRoot.Parent then mobRoot:SetAttribute("Tweening", false) end
-                        BringTweens[mobRoot] = nil
-                    end)
-                    tw:Play()
-                end
-            end
-        end
-    end
-end
-
-task.spawn(function()
-    while not Destroyed do
-        if GodFarm and AutoBring then pcall(BringEnemy) end
-        task.wait(Config.BringInterval)
-    end
-end)
-
--- =========================================================
--- ABÓBORAS (God Farm + Halloween)
--- =========================================================
-
-local function PumpkinName(n)
-    if type(n) ~= "string" then return false end
-    if string.find(n, "umpkin", 1, true) or string.find(n, "UMPKIN", 1, true) then return true end
-    local low = string.lower(n)
-    return string.find(low, "jack", 1, true) ~= nil and string.find(low, "lantern", 1, true) ~= nil
-end
-
-local function IdleState(st)
-    return st == nil or st == "Idle"
-end
-
-local function VariantName(n)
-    return (string.gsub(tostring(n or "?"), "%.%d+$", ""))
-end
-
-local function HasM1Tag(i)
-    local ok, t = pcall(function() return i:HasTag("M1HitRegistry") end)
-    return ok and t
-end
-
-local HS = {
-    door = nil,
-    portal = nil,
-    domain = nil,
-    lastFight = 0,
-    doorFail = setmetatable({}, { __mode = "k" }),
-    kinds = {},
-    skip = setmetatable({}, { __mode = "k" }),
-    tally = { pumpkins = 0, doors = 0, bosses = 0, rare = 0 },
-    tpTried = {},
-    way = nil,
-    mode = "OFF",
-    note = "",
-    lastError = nil,
-}
-
-local HalloweenSaved = {}
-pcall(function()
-    if isfile and isfile(Config.HalloweenSaveFile) then
-        local t = HttpService:JSONDecode(readfile(Config.HalloweenSaveFile))
-        if type(t) == "table" then HalloweenSaved = t end
-    end
-end)
-if type(HalloweenSaved.way) == "string" then HS.way = HalloweenSaved.way end
-
-local function SaveHalloween()
-    pcall(function()
-        if writefile then writefile(Config.HalloweenSaveFile, HttpService:JSONEncode(HalloweenSaved)) end
-    end)
-end
-
-local function CollectPumpkins()
-    local folder = Workspace:FindFirstChild("PumpkinHunt")
-    local out = {}
-    if not folder then return out end
-
-    local now = os.clock()
-
-    for _, m in ipairs(folder:GetChildren()) do
-        local state = m:GetAttribute("PumpkinState")
-        local isPumpkin = m.Name == "Pumpkin" or PumpkinName(m.Name) or state ~= nil
-
-        if isPumpkin and (m:IsA("Model") or m:IsA("BasePart"))
-            and IdleState(state) and now >= (HS.skip[m] or 0) then
-
-            local hits, body, bv, prompt, detector = {}, nil, -1, nil, nil
-            local scan = m:IsA("BasePart") and { m } or m:GetDescendants()
-
-            for _, d in ipairs(scan) do
-                if d:IsA("BasePart") and (GodFPS or d.Transparency < 0.99) then
-                    if HasM1Tag(d) then table.insert(hits, d) end
-                    local v = d.Size.X * d.Size.Y * d.Size.Z
-                    if v > bv then body, bv = d, v end
-                elseif not prompt and d:IsA("ProximityPrompt") and d.Enabled then
-                    prompt = d
-                elseif not detector and d:IsA("ClickDetector") then
-                    detector = d
-                end
-            end
-
-            if body and body.Position.Y > -50 and (GodFPS or IsVisible(body)) then
-                local kind = VariantName((hits[1] or body).Name)
-                local k = HS.kinds[kind]
-                local dropped = k ~= nil and k.tries >= 2 and k.broke == 0
-                if not dropped then
-                    table.insert(out, {
-                        root = m,
-                        part = hits[1] or body,
-                        hits = hits,
-                        kind = kind,
-                        pos = body.Position,
-                        prompt = prompt,
-                        detector = detector,
-                        tagged = #hits > 0,
-                        rare = m:GetAttribute("PumpkinRare") == true,
-                    })
-                end
-            end
-        end
-    end
-
-    return out
-end
-
-local function PickPumpkin(list, from, within, rareFirst)
-    local best, bd, br = nil, math.huge, false
-    for _, c in ipairs(list) do
-        local d = (c.pos - from).Magnitude
-        local rare = rareFirst and c.rare == true
-        if rare or not within or d <= within then
-            if (rare and not br) or (rare == br and d < bd) then
-                best, bd, br = c, d, rare
-            end
-        end
-    end
-    return best
-end
-
-local function HalloweenAlive(c)
-    local m = c.root
-    if not m.Parent or not m:IsDescendantOf(Workspace) then return false end
-    if not c.rare and not IdleState(m:GetAttribute("PumpkinState")) then return false end
-
-    if c.tagged then
-        for _, p in ipairs(c.hits) do
-            if p.Parent and HasM1Tag(p) and (GodFPS or p.Transparency < 0.99) then return true end
-        end
-        return false
-    end
-
-    return c.part.Parent ~= nil and (GodFPS or c.part.Transparency < 0.99)
-end
-
-local function HSnap(c)
-    local t = {}
-    pcall(function()
-        for key, v in pairs(c.root:GetAttributes()) do t["r." .. key] = v end
-        if c.part ~= c.root then
-            for key, v in pairs(c.part:GetAttributes()) do t["p." .. key] = v end
-        end
-    end)
-    return t
-end
-
-local function HChanged(a, b)
-    for key, v in pairs(a) do if b[key] ~= v then return true end end
-    for key in pairs(b) do if a[key] == nil then return true end end
-    return false
-end
-
-local function WayOrder(c, learned)
-    local out, seen = {}, {}
-    local function add(w)
-        if not seen[w] then
-            seen[w] = true
-            table.insert(out, w)
-        end
-    end
-    if c.prompt then add("prompt") end
-    if c.detector then add("detector") end
-    if learned then add(learned) end
-    if #c.hits > 0 then add("remote") end
-    add("click")
-    add("remote")
-    return out
-end
-
-local function HoldPrompt(pr)
-    if fireproximityprompt then
-        pcall(fireproximityprompt, pr)
-        return
-    end
-    local d = tonumber(pr.HoldDuration) or 0
-    if not pcall(function() pr:InputHoldBegin() end) then return end
-    task.wait(d + 0.25)
-    pcall(function() pr:InputHoldEnd() end)
-end
-
-local function FireWay(way, c)
-    if way == "prompt" and c.prompt then
-        HoldPrompt(c.prompt)
-    elseif way == "detector" and c.detector then
-        if fireclickdetector then pcall(fireclickdetector, c.detector) end
-    elseif way == "remote" then
-        local hits = (#c.hits > 0) and c.hits or { c.part }
-        for _, p in ipairs(hits) do
-            if p and p.Parent then AttackTarget(c.root, p) end
-        end
-    else
-        EnsureTool()
-    end
-end
-
--- Interrompe movimento/loops quando o combate precisa ter prioridade
-local function Interrupted()
-    if not Engaged() then return true end
-    return NearestEnemy(250) ~= nil
-end
-
-local function SmashPumpkin(c)
-    UpdateCharacter()
-    if not Root then return end
-
-    local away = Vector3.new(Root.Position.X - c.pos.X, 0, Root.Position.Z - c.pos.Z)
-    if away.Magnitude < 1 then away = Vector3.new(1, 0, 0) end
-    local stand = c.pos + away.Unit * 4 + Vector3.new(0, 1.5, 0)
-
-    if (Root.Position - stand).Magnitude > 6 then
-        HS.mode = "INDO ABÓBORA"
-        if not GoTo(stand, 3, 12, Interrupted) then return end
-    end
-
-    if Interrupted() or not HalloweenAlive(c) then return end
-
-    HS.mode = "ABÓBORA"
-    EnsureTool()
-
-    local k = HS.kinds[c.kind] or { tries = 0, broke = 0 }
-    HS.kinds[c.kind] = k
-    local base = HSnap(c)
-
-    for _, way in ipairs(WayOrder(c, HS.way)) do
-        local budget, n = Config.HalloweenPerWay, 0
-
-        while n < budget do
-            n += 1
-            if Interrupted() then return end
-
-            if not HalloweenAlive(c) then
-                local t0 = os.clock()
-                while os.clock() - t0 < 2 and not HalloweenAlive(c) do task.wait(0.1) end
-
-                if not HalloweenAlive(c) then
-                    k.broke += 1
-                    HS.tally.pumpkins += 1
-                    if c.rare then HS.tally.rare += 1 end
-                    HS.skip[c.root] = os.clock() + 20
-                    if HS.way ~= way then
-                        HS.way = way
-                        HalloweenSaved.way = way
-                        SaveHalloween()
-                    end
-                    return
-                end
-            end
-
-            FireWay(way, c)
-            task.wait(Config.HalloweenSwing)
-
-            if budget == Config.HalloweenPerWay and HChanged(base, HSnap(c)) then
-                budget = Config.HalloweenPerWay * 6
-            end
-        end
-    end
-
-    k.tries += 1
-    HS.skip[c.root] = os.clock() + 180
-end
-
--- =========================================================
--- HALLOWEEN: PORTAS
--- =========================================================
-
-local function PivotPos(inst)
-    if not inst then return nil end
-    if inst:IsA("Model") then return inst:GetPivot().Position end
-    if inst:IsA("BasePart") then return inst.Position end
-    return nil
-end
-
-local function DecorFolder()
-    local map = Workspace:FindFirstChild("Map")
-    local town = map and map:FindFirstChild("Town")
-    return town and town:FindFirstChild("HalloweenDecor")
-end
-
--- Lista as portas disponíveis agora.
--- Prioriza filhos com atributos/prompt de porta; se nada for encontrado,
--- usa os filhos de HalloweenDecor (é de onde vêm as portas nos seus logs).
-local function DoorList()
-    local decor = DecorFolder()
-    if not decor then return {} end
-
-    local now = os.clock()
-    local serverNow = ServerNow()
-    local list, fallback = {}, {}
-
-    for _, inst in ipairs(decor:GetChildren()) do
-        local prompt = inst:FindFirstChildWhichIsA("ProximityPrompt", true)
-        local pos = nil
-        if prompt and prompt.Parent and prompt.Parent:IsA("BasePart") then
-            pos = prompt.Parent.Position
-        else
-            pos = PivotPos(inst)
-        end
-
-        if pos and (HS.doorFail[inst] or 0) <= now then
-            local isOpen = inst:GetAttribute("DoorOpen") == true
-            local cool = tonumber(inst:GetAttribute("CooldownUntil")) or 0
-            local hasDoorAttr = inst:GetAttribute("DoorOpen") ~= nil or cool > 0
-
-            if hasDoorAttr or prompt then
-                if not isOpen and cool <= serverNow and (not prompt or prompt.Enabled) then
-                    table.insert(list, { inst = inst, pos = pos, prompt = prompt })
-                end
-            else
-                table.insert(fallback, { inst = inst, pos = pos, prompt = nil })
-            end
-        end
-    end
-
-    if #list == 0 then
-        return fallback
-    end
-    return list
-end
-
-local function PickNearest(list, from)
-    local best, bd = nil, math.huge
-    for _, d in ipairs(list) do
-        local dist = (d.pos - from).Magnitude
-        if dist < bd then best, bd = d, dist end
-    end
-    return best
-end
-
-local function KnockDoor(d)
-    UpdateCharacter()
-    if not Root then return end
-
-    local away = Vector3.new(Root.Position.X - d.pos.X, 0, Root.Position.Z - d.pos.Z)
-    if away.Magnitude < 1 then away = Vector3.new(0, 0, 1) end
-    local stand = d.pos + away.Unit * 4 + Vector3.new(0, 2, 0)
-
-    if (Root.Position - stand).Magnitude > 4 then
-        HS.mode = "INDO PARA PORTA"
-        if not GoTo(stand, 2, 15, Interrupted) then return end
-    end
-    if Interrupted() then return end
-
-    HS.mode = "BATENDO"
+end))
+
+table.insert(CONNS, Player.CharacterAdded:Connect(function()
+    LockCF = nil
+    Travel = nil
+    LastWritten = nil
+    SavedCollide = {}
     HS.door = nil
+    HS.target = nil
+    HS.domain = nil
+    LastEquip = 0
+end))
 
-    local _, fn = HalloweenRemotes()
-    if fn then
-        task.spawn(function()
-            pcall(function() fn:InvokeServer(d.inst) end)
-        end)
-    elseif d.prompt and fireproximityprompt then
-        pcall(fireproximityprompt, d.prompt)
-    end
-
-    local t0 = os.clock()
-    while not Destroyed and not HS.door and os.clock() - t0 < Config.DoorWait do
-        task.wait(0.1)
-    end
-
-    if not HS.door then
-        HS.doorFail[d.inst] = os.clock() + Config.DoorFailTime
-        HS.note = "porta sem resposta: " .. d.inst.Name
-    end
-end
-
--- =========================================================
--- HALLOWEEN: PORTAL DO BOSS
--- =========================================================
-
-local function EnterPortal(dr)
-    if not dr.entered then
-        local pos = PivotPos(dr.inst)
-        if not pos then
-            dr.done = true
-            return
-        end
-
-        dr.tries = (dr.tries or 0) + 1
-        if dr.tries > 4 then
-            dr.done = true
-            HS.note = "portal: não consegui entrar"
-            return
-        end
-
-        if not GoTo(pos + Vector3.new(0, 2, 0), 2, 15, Interrupted) then return end
-
-        local prompt = dr.inst:FindFirstChildWhichIsA("ProximityPrompt", true)
-        if prompt and fireproximityprompt then pcall(fireproximityprompt, prompt) end
-
-        dr.entered = true
-        dr.enterAt = os.clock()
-        return
-    end
-
-    if HS.domain then
-        HS.mode = "DOMÍNIO"
-        task.wait(0.25)
-        return
-    end
-
-    if os.clock() - dr.enterAt > Config.PortalWait then
-        dr.entered = false
-        dr.tries = (dr.tries or 0)
-    end
-    task.wait(0.25)
-end
-
--- =========================================================
--- HALLOWEEN: EVENTOS (DoorOpened, EventFinished, Domínio)
--- =========================================================
-
-local function EventKind(ev)
-    if type(ev) ~= "string" then return "game" end
-    local low = string.lower(ev)
-    if ev == "Boss Fight" or string.find(low, "hell", 1, true) then return "boss" end
-    if string.find(low, "treat", 1, true) then return "treat" end
-    if string.find(low, "attack", 1, true) or string.find(low, "fight", 1, true) then return "fight" end
-    return "game"
-end
-
-local HalloweenListening = false
-
-local function ListenHalloween()
-    if HalloweenListening then return end
-    local ev = HalloweenRemotes()
-    if not ev then return end
-    HalloweenListening = true
-
-    ev.OnClientEvent:Connect(function(kind, inst, who, data)
-        if Destroyed then return end
-
-        if kind == "DoorOpened" then
-            local evName = type(data) == "table" and data.Event or nil
-            local isBoss = (type(data) == "table" and data.Boss == true) or EventKind(evName) == "boss"
-
-            if who == Player then
-                HS.door = {
-                    inst = inst,
-                    event = evName,
-                    boss = isBoss,
-                    at = os.clock(),
-                    accepted = false,
-                    done = false,
-                }
-                if isBoss then
-                    HS.tally.bosses += 1
-                else
-                    HS.tally.doors += 1
-                end
-            end
-
-        elseif kind == "EventFinished" then
-            if HS.door and HS.door.inst == inst then
-                HS.door.done = true
-            end
-
-        elseif kind == "BossTeleportSound" then
-            HS.domain = { at = os.clock() }
-            HS.lastFight = os.clock()
-            if HS.door and HS.door.boss then HS.door.done = true end
-
-        elseif kind == "PromptEventTeleport" then
-            if HalloweenOn() then
-                task.delay(1, function() FireEvent("AcceptEventTeleport") end)
-            end
-
-        elseif kind == "PromptEventReturn" then
-            task.delay(1, function() FireEvent("AcceptTeleportReturn") end)
-        end
-    end)
-end
-
--- =========================================================
--- MÁQUINA PRINCIPAL
--- =========================================================
-
-local function Step()
-    UpdateCharacter()
-
-    if not Engaged() then
-        HS.mode = "OFF"
-        if Flight.body then StopFlight() end
-        task.wait(0.5)
-        return
-    end
-
-    ListenHalloween()
-
-    if not Root or not Humanoid or Humanoid.Health <= 0 then
-        HS.mode = "SEM PERSONAGEM"
-        Nav = nil
-        task.wait(0.5)
-        return
-    end
-
-    -- 0) Domínio do boss expirou sem combate?
-    if HS.domain and os.clock() - math.max(HS.domain.at, HS.lastFight) > Config.DomainTimeout then
-        HS.domain = nil
-    end
-
-    -- 1) COMBATE: qualquer inimigo vivo perto tem prioridade
-    local maxDist = Config.EnemySearch
-    if HS.domain then maxDist = 2000 end
-    if not FlyMode() then maxDist = Config.AttackRadius end
-
-    local enemy = NearestEnemy(maxDist)
-    if enemy then
-        HS.mode = "COMBATE"
-        HS.lastFight = os.clock()
-        FightEnemy(enemy)
-        return
-    end
-
-    -- 2) EVENTO DE PORTA EM ANDAMENTO
-    local dr = HS.door
-    if dr and not dr.done then
-        if os.clock() - dr.at > Config.DoorMaxEvent then
-            dr.done = true
-        elseif dr.boss then
-            if HalloweenBoss then
-                HS.mode = "PORTAL"
-                EnterPortal(dr)
-                return
-            end
-            dr.done = true
-        else
-            HS.mode = "EVENTO"
-            if not dr.accepted and os.clock() - dr.at > 1.5 then
-                dr.accepted = true
-                FireEvent("AcceptReward")
-            end
-            task.wait(0.25)
-            return
-        end
-    end
-
-    -- 3) DOMÍNIO ATIVO: espera os inimigos aparecerem
-    if HS.domain then
-        HS.mode = "DOMÍNIO"
-        task.wait(0.25)
-        return
-    end
-
-    -- 4) PORTAS (quando existirem e estiverem disponíveis)
-    if HalloweenDoors then
-        local list = DoorList()
-        local d = PickNearest(list, Root.Position)
-        if d then
-            KnockDoor(d)
-            return
-        end
-    end
-
-    -- 5) GOD FARM: abóboras (inclui Jack e abóboras raras)
-    if GodFarm then
-        local c = PickPumpkin(CollectPumpkins(), Root.Position, Config.PumpkinSearch, HalloweenRareFirst)
-        if c then
-            SmashPumpkin(c)
-            return
-        end
-    end
-
-    -- 6) NADA A FAZER: fica parado, sem voo, sem travar o personagem
-    HS.mode = "ESPERANDO"
-    if Flight.body and not Nav then StopFlight() end
-    task.wait(Config.IdleWait)
-end
+table.insert(CONNS, Player.OnTeleport:Connect(function(state)
+    if Destroyed then return end
+    if state == Enum.TeleportState.Started then SaveStates() end
+end))
 
 task.spawn(function()
-    while not Destroyed do
-        local ok, err = pcall(Step)
+    local id = RUN_ID
+    while RUN_ID == id and not Destroyed do
+        local ok, err = pcall(MainStep)
         if not ok then
             HS.lastError = tostring(err)
             warn("[Pumpkin Hunt] " .. HS.lastError)
             task.wait(0.5)
         end
-        task.wait(Config.LoopInterval)
+        task.wait(0.1)
     end
 end)
 
--- =========================================================
--- ESP
--- =========================================================
-
-local ESPBillboards = {}
-
-local function CreateBillboard(adornee)
-    local gui = Instance.new("BillboardGui")
-    gui.Name = "PumpkinESP"
-    gui.Adornee = adornee
-    gui.Size = UDim2.new(0, 200, 0, 50)
-    gui.StudsOffset = Vector3.new(0, 3, 0)
-    gui.AlwaysOnTop = true
-    gui.MaxDistance = 2000
-    gui.Parent = adornee
-
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, 0, 1, 0)
-    label.BackgroundTransparency = 1
-    label.TextStrokeTransparency = 0
-    label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-    label.Font = Enum.Font.GothamBold
-    label.TextScaled = true
-    label.Text = ""
-    label.Parent = gui
-
-    return { gui = gui, label = label, adornee = adornee }
-end
-
-local function ClearESP()
-    for _, data in pairs(ESPBillboards) do
-        pcall(function() data.gui:Destroy() end)
+task.spawn(function()
+    local id = RUN_ID
+    while RUN_ID == id and not Destroyed do
+        if AutoHaki then pcall(TryActivateHaki) end
+        task.wait(2)
     end
-    ESPBillboards = {}
-end
-
-local function UpdateESP()
-    if not ShowESP or not Root then
-        ClearESP()
-        return
-    end
-
-    local active = {}
-
-    local function show(key, part, text, color)
-        active[key] = true
-        local data = ESPBillboards[key]
-        if not data or not data.gui.Parent then
-            data = CreateBillboard(part)
-            ESPBillboards[key] = data
-        end
-        data.gui.Adornee = part
-        data.label.TextColor3 = color
-        data.label.Text = text
-    end
-
-    local pf = Workspace:FindFirstChild("PumpkinHunt")
-    if pf then
-        for _, obj in ipairs(pf:GetChildren()) do
-            local p = PartOf(obj)
-            if p and (GodFPS or IsVisible(obj)) then
-                local dist = math.floor((p.Position - Root.Position).Magnitude)
-                show(obj, p, "Pumpkin [" .. dist .. "]", Color3.fromRGB(255, 170, 0))
-            end
-        end
-    end
-
-    local ef = Workspace:FindFirstChild("Enemies")
-    if ef then
-        for _, m in ipairs(ef:GetChildren()) do
-            if m:IsA("Model") and IsAlive(m) then
-                local p = PartOf(m)
-                local h = m:FindFirstChildOfClass("Humanoid")
-                if p and h then
-                    local dist = math.floor((p.Position - Root.Position).Magnitude)
-                    show(m, p, m.Name .. " [" .. dist .. "] HP " .. math.floor(h.Health), Color3.fromRGB(255, 60, 60))
-                end
-            end
-        end
-    end
-
-    for key, data in pairs(ESPBillboards) do
-        if not active[key] or not data.gui.Parent or not data.adornee.Parent then
-            pcall(function() data.gui:Destroy() end)
-            ESPBillboards[key] = nil
-        end
-    end
-end
+end)
 
 task.spawn(function()
-    while not Destroyed do
+    local id = RUN_ID
+    while RUN_ID == id and not Destroyed do
+        if AutoRollStore then
+            local net = NetFolder()
+            local gacha = net and net:FindFirstChild("RF/GachaNetworkRF")
+            if gacha and gacha:IsA("RemoteFunction") then
+                pcall(function()
+                    gacha:InvokeServer({ Context = "Purchase", BoxName = "Halloween26Gacha" })
+                end)
+            end
+            pcall(UpdStFruit)
+        end
+        task.wait(5)
+    end
+end)
+
+task.spawn(function()
+    local id = RUN_ID
+    while RUN_ID == id and not Destroyed do
+        if AutoBring then pcall(BringEnemy) end
+        task.wait(CFG.BringInterval)
+    end
+end)
+
+task.spawn(function()
+    local id = RUN_ID
+    while RUN_ID == id and not Destroyed do
+        if not GodFPS then
+            pcall(function()
+                local map = Workspace:FindFirstChild("Map")
+                local water = map and map:FindFirstChild("WaterBase-Plane")
+                if water and water:IsA("BasePart") then
+                    water.Size = WalkWater and Vector3.new(1000, 112, 1000) or Vector3.new(1000, 80, 1000)
+                end
+            end)
+        end
+        task.wait(1)
+    end
+end)
+
+task.spawn(function()
+    local id = RUN_ID
+    while RUN_ID == id and not Destroyed do
         pcall(UpdateESP)
         task.wait(0.35)
     end
 end)
 
--- =========================================================
--- GRAVADOR (debug)
--- =========================================================
-
-local HWatch = { on = false, lines = {}, conns = {}, t0 = 0, n = 0 }
-
-local function HLog(text)
-    table.insert(HWatch.lines, string.format("%8.2f  %s", os.clock() - HWatch.t0, text))
-    if #HWatch.lines > 4000 then table.remove(HWatch.lines, 1) end
-    HWatch.n += 1
-end
-
-local function HFlush()
-    if not writefile then return end
-    local head = string.format("[Pumpkin Hunt] Halloween recorder  ·  started %s  ·  place %s",
-        tostring(HWatch.started), tostring(game.PlaceId))
-    pcall(writefile, "PumpkinHunt_halloween_watch.txt",
-        table.concat({ head, "", table.concat(HWatch.lines, "\n") }, "\n"))
-end
-
-local function HStartWatch()
-    if HWatch.on then return end
-    HWatch.on = true
-    HWatch.t0 = os.clock()
-    HWatch.lines = {}
-    HWatch.n = 0
-    HWatch.started = os.date("!%Y-%m-%d %H:%M:%SZ")
-
-    local ev = HalloweenRemotes()
-    if ev then
-        local conn
-        conn = ev.OnClientEvent:Connect(function(...)
-            if Destroyed or not HWatch.on then
-                if conn then conn:Disconnect() end
-                return
-            end
-            local ps = {}
-            for i = 1, select("#", ...) do
-                local x = select(i, ...)
-                ps[i] = (typeof(x) == "Instance") and FullName(x) or tostring(x)
-            end
-            HLog("event: " .. table.concat(ps, " | "))
-        end)
-        table.insert(HWatch.conns, conn)
-    end
-
-    local function every3()
-        if HWatch.on and not Destroyed then
-            HFlush()
-            task.delay(3, every3)
-        end
-    end
-    task.delay(3, every3)
-end
-
-local function HStopWatch()
-    if not HWatch.on then return end
-    HWatch.on = false
-    for _, c in ipairs(HWatch.conns) do pcall(function() c:Disconnect() end) end
-    HWatch.conns = {}
-    HLog("stop")
-    HFlush()
-end
-
--- =========================================================
--- CHARACTER / TELEPORT
--- =========================================================
-
-local CharacterConnection = Player.CharacterAdded:Connect(function(NewCharacter)
-    Character = NewCharacter
-    Nav = nil
-    Flight.body = nil
-    Flight.gyro = nil
-    Flight.origCollide = {}
-    if Flight.noclip then
-        Flight.noclip:Disconnect()
-        Flight.noclip = nil
-    end
-    HS.door = nil
-    HS.portal = nil
-    HS.domain = nil
-    LastEquip = 0
-    task.wait(2)
-    UpdateCharacter()
-end)
-
-local TeleportConnection = Player.OnTeleport:Connect(function(State)
-    if Destroyed then return end
-    if State == Enum.TeleportState.Started then SaveStates() end
-end)
-
--- =========================================================
--- INTERFACE
--- =========================================================
-
-local Window = GodLib:CreateWindow({
+Window = GodLib:CreateWindow({
     Title = "Pumpkin Hunt",
     SubTitle = "PREMIUM",
     Size = UDim2.fromOffset(400, 300),
@@ -1547,22 +1515,124 @@ local Window = GodLib:CreateWindow({
     AutoBackground = true,
 })
 
-local Main = Window:AddTab({ Title = "Principal", Icon = "house" })
-local Combat = Window:AddTab({ Title = "Combate", Icon = "swords" })
-local Halloween = Window:AddTab({ Title = "Halloween", Icon = "ghost" })
+StatusTab = Window:AddTab({ Title = "Status", Icon = "info" })
+Main = Window:AddTab({ Title = "Principal", Icon = "home" })
+Combat = Window:AddTab({ Title = "Combate", Icon = "swords" })
+Halloween = Window:AddTab({ Title = "Halloween", Icon = "ghost" })
+
+StatusTab:AddSection("HORÁRIO")
+StatusRow(function()
+    return "UTC: " .. os.date("!%H:%M:%S") .. "   ·   Brasília: " .. os.date("!%H:%M:%S", os.time() - 3 * 3600)
+end)
+StatusRow(function()
+    local on, secs = EventClock()
+    if on then return "Evento: ATIVO · termina em " .. FormatDur(secs) end
+    return "Evento: fora · começa em " .. FormatDur(secs)
+end)
+StatusRow(function()
+    return string.format("Janela do evento: xx:00 até xx:%02d (UTC)", CFG.EventMinutes)
+end)
+StatusRow(function()
+    return "Sessão no script: " .. FormatDur(os.time() - HS.startedAt)
+end)
+
+StatusTab:AddSection("SERVIDOR")
+StatusRow(function()
+    local sea = SEA_OF_PLACE[game.PlaceId]
+    return "Sea: " .. (sea and tostring(sea) or "desconhecido") .. "   ·   Place: " .. tostring(game.PlaceId)
+end)
+StatusRow(function()
+    return "Ping: " .. PingMs() .. " ms   ·   FPS: " .. FPSNow
+end)
+StatusRow(function()
+    local root, hum = GetParts()
+    if not root then return "Personagem: morto ou carregando" end
+    local p = root.Position
+    return string.format("Vida: %d%%   ·   Posição: %d, %d, %d", math.floor(HealthPct() * 100), math.floor(p.X), math.floor(p.Y), math.floor(p.Z))
+end)
+StatusRow(function()
+    return "Modo: " .. HS.mode
+end)
+StatusRow(function()
+    return "Alvo atual: " .. (HS.target and HS.target.Name or "nenhum")
+end)
+StatusRow(function()
+    return "Nota: " .. HS.note
+end)
+
+StatusTab:AddSection("ALVOS E PORTAS")
+StatusRow(function()
+    return "Snowman / Jack / Hellfire Gas / Dapper Jack vivos: " .. CountFocus()
+end)
+StatusRow(function()
+    return "Abóboras em PumpkinHunt: " .. #ListPumpkins()
+end)
+StatusRow(function()
+    return "Portas prontas para bater: " .. CountDoorsReady()
+end)
+StatusRow(function()
+    return "Portal Hellfire: " .. (PortalPos() and "aberto" or "não") .. "   ·   Domínio do boss: " .. (HS.domain and "sim" or "não")
+end)
+StatusRow(function()
+    return "Kills: " .. HS.tally.kills .. "   ·   Bosses: " .. HS.tally.bosses .. "   ·   Portas batidas: " .. HS.tally.doors
+end)
+StatusRow(function()
+    return "Abóboras quebradas: " .. HS.tally.pumpkins .. "   ·   Raras: " .. HS.tally.rare
+end)
+StatusRow(function()
+    local n = 0
+    for _, d in ipairs(DoorList()) do
+        if BossActive(d.inst) then n += 1 end
+    end
+    return "Portas com boss ativo: " .. n .. "   ·   Boss Hellfire mortos: " .. HS.tally.bossKills
+end)
+StatusRow(function()
+    local folder = Workspace:FindFirstChild("Enemies")
+    local n, enr = 0, 0
+    if folder then
+        for _, m in ipairs(folder:GetChildren()) do
+            if m.Name == "Dapper Jack" and IsAliveModel(m) then
+                n += 1
+                if m:GetAttribute("DapperJackEnraged") then enr += 1 end
+            end
+        end
+    end
+    return "Dapper Jack vivo: " .. n .. "   ·   enraged: " .. enr
+end)
+StatusRow(function()
+    return "Flag do jogo (HalloweenEventActive): " .. tostring(Workspace:GetAttribute("HalloweenEventActive"))
+end)
+
+StatusTab:AddSection("FRUTAS")
+StatusRow(function()
+    return "Spawnadas agora: " .. #FruitScan .. "   ·   Coletadas nesta sessão: " .. HS.tally.fruits
+end)
+for i = 1, 8 do
+    local idx = i
+    StatusRow(function()
+        local f = FruitScan[idx]
+        if f then return idx .. ". " .. f.name .. "  ·  " .. f.dist .. " studs" end
+        return idx .. ". -"
+    end)
+end
+
+StatusTab:AddSection("SCRIPT")
+StatusRow(function()
+    return "Formato do hit: " .. HitVariant .. "   ·   Último erro: " .. (HS.lastError or "nenhum")
+end)
 
 Main:AddSection("AUTOMAÇÃO")
 
 Main:AddToggle("GodFarm", {
     Title = "God Farm",
-    Description = "Farm + smash: Jack, abóboras e inimigos do evento",
+    Description = "Qualquer modelo em PumpkinHunt, a mais próxima",
     Icon = "plane",
     Default = GodFarm,
     Callback = function(Value)
         GodFarm = Value
         if Value then EnsureTool() end
         SaveStates()
-    end
+    end,
 })
 
 Main:AddToggle("AutoRollStore", {
@@ -1573,29 +1643,29 @@ Main:AddToggle("AutoRollStore", {
     Callback = function(Value)
         AutoRollStore = Value
         SaveStates()
-    end
+    end,
 })
 
 Main:AddToggle("AutoBring", {
-    Title = "Bring Jack",
-    Description = "Reúne Jack o' Lantern perto de você (God Farm)",
+    Title = "Bring Snowman",
+    Description = "Puxa o Pumpkin Snowman e o Jack para perto de você",
     Icon = "users",
     Default = AutoBring,
     Callback = function(Value)
         AutoBring = Value
         SaveStates()
-    end
+    end,
 })
 
 Main:AddToggle("AutoBringFruits", {
     Title = "Bring Fruits",
-    Description = "Traz frutas próximas para você",
+    Description = "Voa até a fruta mais próxima e pega sem teleportar",
     Icon = "apple",
     Default = AutoBringFruits,
     Callback = function(Value)
         AutoBringFruits = Value
         SaveStates()
-    end
+    end,
 })
 
 Main:AddToggle("WalkWater", {
@@ -1605,45 +1675,43 @@ Main:AddToggle("WalkWater", {
     Default = WalkWater,
     Callback = function(Value)
         WalkWater = Value
-        _G.WalkWater = Value
         SaveStates()
-    end
+    end,
 })
 
 Main:AddToggle("AutoHaki", {
     Title = "Auto Buso",
     Description = "Ativa Buso automaticamente",
-    Icon = "shield-halved",
+    Icon = "shield",
     Default = AutoHaki,
     Callback = function(Value)
         AutoHaki = Value
-        if Value then TryActivateHaki() end
+        if Value then pcall(TryActivateHaki) end
         SaveStates()
-    end
+    end,
 })
 
 Main:AddToggle("ShowESP", {
     Title = "Mostrar Distâncias",
-    Description = "Exibe distância e vida de inimigos e abóboras",
+    Description = "Exibe distância e vida dos alvos e abóboras",
     Icon = "eye",
     Default = ShowESP,
     Callback = function(Value)
         ShowESP = Value
         if not Value then ClearESP() end
         SaveStates()
-    end
+    end,
 })
 
 Main:AddToggle("GodFPS", {
     Title = "God FPS",
     Description = "Tela preta + transparência total da workspace",
-    Icon = "bolt",
+    Icon = "flame",
     Default = false,
     Callback = function(Value)
         GodFPS = Value
         if Value then ApplyGodFPS() else RestoreGodFPS() end
-        SaveStates()
-    end
+    end,
 })
 
 Main:AddDropdown("ToolType", {
@@ -1656,226 +1724,222 @@ Main:AddDropdown("ToolType", {
         SelectedToolType = Value
         LastEquip = 0
         SaveStates()
-    end
+    end,
 })
 
 Combat:AddSection("ATAQUE")
 
 Combat:AddToggle("AutoAttack", {
     Title = "Fast Attack",
-    Description = "Ataca qualquer inimigo perto (Hellfire, Jack, etc.)",
-    Icon = "crosshairs",
+    Description = "Ataca os alvos focados sempre; outros NPCs só no evento",
+    Icon = "crosshair",
     Default = AutoAttack,
     Callback = function(Value)
         AutoAttack = Value
         SaveStates()
-    end
+    end,
 })
 
-Combat:AddParagraph({
-    Title = "Alcance",
-    Content = "Raio " .. Config.AttackRadius .. " • Delay " .. Config.AttackDelay .. "s"
+Combat:AddToggle("AutoHitVariant", {
+    Title = "Trocar formato do hit",
+    Description = "Troca sozinho o formato do RegisterHit se não der dano",
+    Icon = "sliders-horizontal",
+    Default = AutoHitVariant,
+    Callback = function(Value)
+        AutoHitVariant = Value
+        SaveStates()
+    end,
+})
+
+Combat:AddSlider("HoverHeight", {
+    Title = "Altura acima do alvo",
+    Description = "Studs acima do alvo durante o ataque",
+    Icon = "scale",
+    Min = 4, Max = 25, Default = CFG.HoverHeight,
+    Callback = function(v)
+        CFG.HoverHeight = v
+        SaveStates()
+    end,
+})
+
+Combat:AddSlider("Speed", {
+    Title = "Velocidade de voo",
+    Description = "Studs por segundo",
+    Icon = "gauge",
+    Min = 100, Max = 500, Default = CFG.Speed,
+    Callback = function(v)
+        CFG.Speed = v
+        SaveStates()
+    end,
+})
+
+Combat:AddSlider("HitRange", {
+    Title = "Alcance do golpe",
+    Description = "Distância máxima para mandar o golpe",
+    Icon = "target",
+    Min = 20, Max = 80, Default = CFG.HitRange,
+    Callback = function(v)
+        CFG.HitRange = v
+        SaveStates()
+    end,
+})
+
+Combat:AddSlider("AttackDelay", {
+    Title = "Atraso entre golpes (ms)",
+    Description = "Quanto menor, mais rápido",
+    Icon = "timer",
+    Min = 0, Max = 300, Default = math.floor(CFG.AttackDelay * 1000),
+    Callback = function(v)
+        CFG.AttackDelay = v / 1000
+        SaveStates()
+    end,
+})
+
+Combat:AddSlider("EnemyTimeout", {
+    Title = "Tempo máximo por alvo (s)",
+    Description = "Depois disso troca de alvo",
+    Icon = "timer",
+    Min = 5, Max = 60, Default = CFG.EnemyTimeout,
+    Callback = function(v)
+        CFG.EnemyTimeout = v
+        SaveStates()
+    end,
 })
 
 Halloween:AddSection("HALLOWEEN")
 
 Halloween:AddToggle("HalloweenDoors", {
     Title = "Knock Doors",
-    Description = "Bate nas portas quando elas aparecem e volta ao farm depois",
-    Icon = "door-open",
+    Description = "Bate nas portas e entra sozinho na porta Hellfire",
+    Icon = "map",
     Default = HalloweenDoors,
     Callback = function(Value)
         HalloweenDoors = Value
         SaveStates()
-    end
+    end,
 })
 
-Halloween:AddToggle("HalloweenBoss", {
-    Title = "Hell Rider Portal",
-    Description = "Entra no portal do boss e luta no domínio",
+Halloween:AddToggle("HellfirePortal", {
+    Title = "Entrar no portal Hellfire",
+    Description = "Mata o boss do portal e volta a farmar se o evento continuar",
     Icon = "skull",
-    Default = HalloweenBoss,
+    Default = HellfirePortal,
     Callback = function(Value)
-        HalloweenBoss = Value
+        HellfirePortal = Value
         SaveStates()
-    end
+    end,
+})
+
+Halloween:AddToggle("HellfireGasOnly", {
+    Title = "Só Hellfire Gas no evento",
+    Description = "Durante o evento ataca só o Hellfire Gas, não todo NPC",
+    Icon = "crosshair",
+    Default = HellfireGasOnly,
+    Callback = function(Value)
+        HellfireGasOnly = Value
+        SaveStates()
+    end,
 })
 
 Halloween:AddToggle("HalloweenRareFirst", {
     Title = "Priorizar Raras",
-    Description = "Prioriza abóboras raras (Cursed Pumpkin Seed)",
+    Description = "Pega a abóbora rara antes da mais próxima",
     Icon = "star",
     Default = HalloweenRareFirst,
     Callback = function(Value)
         HalloweenRareFirst = Value
         SaveStates()
-    end
+    end,
 })
 
-Halloween:AddToggle("HalloweenWatchToggle", {
-    Title = "Gravador",
-    Description = "Registra eventos do Halloween em arquivo (debug)",
-    Icon = "circle-play",
-    Default = HalloweenWatchOn,
+Halloween:AddToggle("AcceptTeleport", {
+    Title = "Aceitar teleporte do evento",
+    Description = "Aceita sozinho o teleporte que o jogo oferece",
+    Icon = "map",
+    Default = AcceptTeleport,
     Callback = function(Value)
-        HalloweenWatchOn = Value
-        if Value then HStartWatch() else HStopWatch() end
+        AcceptTeleport = Value
         SaveStates()
-    end
+    end,
 })
 
-Halloween:AddButton("Probe", {
-    Title = "Probe",
-    Description = "Gera PumpkinHunt_probe.txt com o estado atual",
-    Icon = "search",
-    ButtonTitle = "Executar",
+Halloween:AddToggle("GoDoorSpot", {
+    Title = "Ir ao ponto das portas",
+    Description = "No Sea 1 vai até (-664, 5, 1589) antes de bater",
+    Icon = "map",
+    Default = GoDoorSpot,
+    Callback = function(Value)
+        GoDoorSpot = Value
+        SaveStates()
+    end,
+})
+
+Halloween:AddToggle("FocusDapperJack", {
+    Title = "Focar Dapper Jack",
+    Description = "Ataca o boss Dapper Jack quando ele estiver na lista de alvos",
+    Icon = "skull",
+    Default = FocusDapperJack,
+    Callback = function(Value)
+        FocusDapperJack = Value
+        SaveStates()
+    end,
+})
+
+Halloween:AddToggle("SkipOthersPumpkins", {
+    Title = "Pular abóboras de outros",
+    Description = "Não perde tempo com abóbora que outro jogador já quebrou",
+    Icon = "star",
+    Default = SkipOthersPumpkins,
+    Callback = function(Value)
+        SkipOthersPumpkins = Value
+        SaveStates()
+    end,
+})
+
+Halloween:AddToggle("AcceptRewards", {
+    Title = "Aceitar recompensas",
+    Description = "Aceita sozinho a recompensa do evento (senão recusa)",
+    Icon = "gift",
+    Default = AcceptRewards,
+    Callback = function(Value)
+        AcceptRewards = Value
+        SaveStates()
+    end,
+})
+
+Halloween:AddSlider("EventMinutes", {
+    Title = "Minutos do evento",
+    Description = "Evento começa xx:00 e termina xx:N (UTC)",
+    Icon = "timer",
+    Min = 1, Max = 15, Default = CFG.EventMinutes,
+    Callback = function(v)
+        CFG.EventMinutes = v
+        SaveStates()
+    end,
+})
+
+Halloween:AddButton("Status", {
+    Title = "Resumo",
+    Description = "Mostra o resumo rápido em uma notificação",
+    Icon = "info",
+    ButtonTitle = "Ver",
     Callback = function()
-        pcall(function()
-            local L = {}
-            table.insert(L, "[Pumpkin Hunt] Probe · place " .. tostring(game.PlaceId))
-
-            local pf = Workspace:FindFirstChild("PumpkinHunt")
-            local total, rare, states = 0, 0, {}
-            if pf then
-                for _, m in ipairs(pf:GetChildren()) do
-                    total += 1
-                    local st = tostring(m:GetAttribute("PumpkinState") or "Idle")
-                    states[st] = (states[st] or 0) + 1
-                    if m:GetAttribute("PumpkinRare") == true then rare += 1 end
-                end
-            end
-            local st = {}
-            for k, v in pairs(states) do table.insert(st, k .. "=" .. v) end
-            table.insert(L, "PumpkinHunt: " .. (pf and "found" or "not found")
-                .. " total " .. total .. " rare " .. rare .. " states " .. table.concat(st, ", "))
-
-            local decor = DecorFolder()
-            table.insert(L, "HalloweenDecor: " .. (decor and ("found, " .. #decor:GetChildren() .. " filhos") or "not found"))
-            if decor then
-                for i, inst in ipairs(decor:GetChildren()) do
-                    if i > 20 then break end
-                    local prompt = inst:FindFirstChildWhichIsA("ProximityPrompt", true)
-                    table.insert(L, string.format("  [%d] %s  class=%s  prompt=%s  DoorOpen=%s  Cooldown=%s",
-                        i, inst.Name, inst.ClassName, tostring(prompt ~= nil),
-                        tostring(inst:GetAttribute("DoorOpen")), tostring(inst:GetAttribute("CooldownUntil"))))
-                end
-            end
-
-            local doors = DoorList()
-            table.insert(L, "Portas disponíveis agora: " .. #doors)
-
-            local tagged = CollectionService:GetTagged("M1HitRegistry")
-            table.insert(L, "M1HitRegistry tagged: " .. #tagged)
-            table.insert(L, "Estado: " .. tostring(HS.mode))
-            table.insert(L, "Nota: " .. tostring(HS.note))
-            table.insert(L, "Porta atual: " .. (HS.door and (HS.door.inst.Name .. " boss=" .. tostring(HS.door.boss)) or "nenhuma"))
-            table.insert(L, "Domínio: " .. tostring(HS.domain ~= nil))
-            table.insert(L, "Último erro: " .. tostring(HS.lastError))
-
-            if writefile then
-                pcall(writefile, "PumpkinHunt_probe.txt", table.concat(L, "\n"))
-            end
-        end)
-    end
+        GodLib:NotifySuccess("Pumpkin Hunt", StatusText())
+    end,
 })
 
-Halloween:AddButton("DumpScripts", {
-    Title = "Dump Scripts",
-    Description = "Salva scripts do evento em PumpkinHuntDump/",
-    Icon = "file-code",
-    ButtonTitle = "Dump",
-    Callback = function()
-        pcall(function()
-            if not (writefile and getscriptbytecode) then return end
-            pcall(function()
-                if makefolder and not (isfolder and isfolder(Config.HalloweenDumpFolder)) then
-                    makefolder(Config.HalloweenDumpFolder)
-                end
-            end)
-
-            local WORDS = { "pumpkin", "lantern", "hallow", "hellrider", "hell rider", "door", "treat", "harvest" }
-            local n = 0
-            local roots = {
-                Player:FindFirstChild("PlayerScripts"), ReplicatedStorage,
-                game:GetService("ReplicatedFirst"), Player:FindFirstChild("PlayerGui"),
-            }
-            for _, root in ipairs(roots) do
-                if root then
-                    for _, s in ipairs(root:GetDescendants()) do
-                        if n >= 150 then break end
-                        if s:IsA("LocalScript") or s:IsA("ModuleScript") then
-                            local low = string.lower(FullName(s))
-                            local hit = false
-                            for _, w in ipairs(WORDS) do
-                                if string.find(low, w, 1, true) then hit = true break end
-                            end
-                            if hit then
-                                local okB, bc = pcall(getscriptbytecode, s)
-                                if okB and type(bc) == "string" and #bc > 0 then
-                                    local file = Config.HalloweenDumpFolder .. "/"
-                                        .. string.sub((string.gsub(FullName(s), "[^%w%-%._]", "_")), 1, 150)
-                                    pcall(writefile, file .. ".luac", bc)
-                                    n += 1
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-            HS.note = "dump: " .. n .. " scripts"
-        end)
+task.spawn(function()
+    local id = RUN_ID
+    while RUN_ID == id and not Destroyed do
+        FruitScan = ScanFruits()
+        FPSNow = math.floor(FrameCount * 2)
+        FrameCount = 0
+        for _, row in ipairs(StatusRows) do
+            local ok, txt = pcall(row.fn)
+            row.label.Text = ok and txt or "erro ao ler"
+        end
+        task.wait(0.5)
     end
-})
+end)
 
--- =========================================================
--- CLEANUP
--- =========================================================
-
-local function Cleanup()
-    if Destroyed then return end
-    SaveStates()
-
-    Destroyed = true
-    Nav = nil
-
-    GodFarm = false
-    AutoAttack = false
-    AutoRollStore = false
-    AutoBring = false
-    AutoBringFruits = false
-    AutoHaki = false
-    ShowESP = false
-    HalloweenDoors = false
-    HalloweenBoss = false
-
-    if GodFPS then
-        RestoreGodFPS()
-        GodFPS = false
-    end
-    if GodFPSGui then
-        pcall(function() GodFPSGui:Destroy() end)
-        GodFPSGui = nil
-    end
-
-    HStopWatch()
-    StopFlight()
-    ClearESP()
-
-    for root, tween in pairs(BringTweens) do
-        pcall(function() tween:Cancel() end)
-        if root and root.Parent then root:SetAttribute("Tweening", false) end
-    end
-    BringTweens = {}
-
-    for _, conn in ipairs({
-        AntiAFKConnection, FlightConnection, CharacterConnection, TeleportConnection,
-    }) do
-        pcall(function() conn:Disconnect() end)
-    end
-
-    print("[Pumpkin Hunt] Sistema encerrado.")
-end
-
-Env.PumpkinHuntCleanup = Cleanup
-
-GodLib:NotifySuccess("Pumpkin Hunt Premium", "God Farm pronto. Halloween sob demanda.")
+GodLib:NotifySuccess("Pumpkin Hunt Premium", "Pronto. Status, Snowman, Jack, Hellfire Gas, Dapper Jack e abóboras.")
