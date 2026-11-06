@@ -826,8 +826,6 @@ GodLib.Icons = {
 		["zoom-in"] = "rbxassetid://10747384552",
 		["zoom-out"] = "rbxassetid://10747384679",
 	}
-	
-return GodLib
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
