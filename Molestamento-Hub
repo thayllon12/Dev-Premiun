@@ -264,9 +264,32 @@ function HalloweenRemotes()
     if not f then return nil, nil end
     return f:FindFirstChild("HalloweenEvent"), f:FindFirstChild("HalloweenFunction")
 end
-function FireEvent(name)
+function FireEvent(name, ...)
     local ev = HalloweenRemotes()
-    if ev then pcall(function() ev:FireServer(name) end) end
+    if ev then
+        local args = table.pack(...)
+        pcall(function() ev:FireServer(name, table.unpack(args, 1, args.n)) end)
+    end
+end
+
+-- NPCs interativos guardam seus remotes na pasta identificada pelo EventId.
+function EventRemote(inst, remoteName)
+    if not inst or not remoteName then return nil end
+    local eventId = inst:GetAttribute("EventId")
+    if eventId == nil then return nil end
+    local folder = ReplicatedStorage:FindFirstChild(tostring(eventId))
+    local remote = folder and folder:FindFirstChild(remoteName)
+    if remote and remote:IsA("RemoteEvent") then return remote end
+    return nil
+end
+
+function FireDoorEvent(inst, remoteName, command, ...)
+    local remote = EventRemote(inst, remoteName)
+    if not remote then return false end
+    local args = table.pack(...)
+    return pcall(function()
+        remote:FireServer(command, table.unpack(args, 1, args.n))
+    end)
 end
 function CloseDialogue()
     if os.clock() - HS.halloweenAt > CFG.DialogWindow then return end
@@ -802,9 +825,11 @@ function DoorList()
     for d in pairs(HS.doorSet) do
         if d.Parent and d:IsDescendantOf(Workspace) then
             local pr = d:FindFirstChildWhichIsA("ProximityPrompt", true)
+            local proximity = d:FindFirstChild("Proximity", true)
             local part
-            if d:IsA("BasePart") then part = d
+            if proximity and proximity:IsA("BasePart") then part = proximity
             elseif pr and pr.Parent and pr.Parent:IsA("BasePart") then part = pr.Parent
+            elseif d:IsA("BasePart") then part = d
             else part = d:FindFirstChildWhichIsA("BasePart", true) end
             if part then
                 table.insert(out, {
@@ -831,70 +856,104 @@ function PickDoor(list, from)
 end
 function KnockDoor(d)
     HS.halloweenAt = os.clock()
-    local root = GetRoot(); if not root then return end
+    local root = GetRoot()
+    if not root then return end
 
-    local inst = d.inst; local pr = d.prompt
-    if not pr or pr.Enabled == false then HS.doorSkip[inst] = os.clock() + CFG.DoorSkip; return end
-    if inst:GetAttribute("DoorOpen") == true then HS.doorSkip[inst] = os.clock() + 1; return end
-    local cd = tonumber(inst:GetAttribute("CooldownUntil")) or 0
-    if cd > ServerNow() then HS.doorSkip[inst] = os.clock() + 1; return end
+    local inst = d.inst
+    local _, halloweenFunction = HalloweenRemotes()
+    if not inst or not inst.Parent or not halloweenFunction then
+        if inst then HS.doorSkip[inst] = os.clock() + CFG.DoorSkip end
+        return
+    end
 
-    local stand = (d.part.CFrame * CFrame.new(0, 0, CFG.KnockStand)).Position
+    if inst:GetAttribute("DoorOpen") == true then
+        HS.doorSkip[inst] = os.clock() + 1
+        return
+    end
+    local cooldown = tonumber(inst:GetAttribute("CooldownUntil")) or 0
+    if cooldown > ServerNow() then
+        HS.doorSkip[inst] = os.clock() + 1
+        return
+    end
+
+    local part = d.part
+    if not part or not part.Parent then
+        HS.doorSkip[inst] = os.clock() + CFG.DoorSkip
+        return
+    end
+
+    local stand = (part.CFrame * CFrame.new(0, 0, CFG.KnockStand)).Position
     HS.mode = "INDO PARA PORTA"
     if (root.Position - stand).Magnitude > 4 then
-        if not GoAuto(stand, 1.5, function() return not HalloweenDoors or not EventOn() end) then
-            HS.doorSkip[inst] = os.clock() + CFG.DoorSkip; return
+        if not GoAuto(stand, 1.5, function()
+            return not HalloweenDoors or not EventOn() or not inst.Parent
+        end) then
+            HS.doorSkip[inst] = os.clock() + CFG.DoorSkip
+            return
         end
     end
+
     root = GetRoot()
-    if root then root.CFrame = CFrame.lookAt(root.Position, Vector3.new(d.part.Position.X, root.Position.Y, d.part.Position.Z)) end
+    if root then
+        root.CFrame = CFrame.lookAt(root.Position,
+            Vector3.new(part.Position.X, root.Position.Y, part.Position.Z))
+    end
 
     HS.door = nil
     HS.mode = "BATENDO"
-    if d.prompt and d.prompt.Enabled and fireproximityprompt then
-        pcall(function() fireproximityprompt(d.prompt) end)
-    end
+
+    -- Usa o fluxo confirmado no dump: HalloweenFunction:InvokeServer(door).
+    -- Não aciona o ProximityPrompt em paralelo para evitar abertura duplicada.
+    local ok, result = pcall(function()
+        return halloweenFunction:InvokeServer(inst)
+    end)
+
     local t0 = os.clock()
-    while os.clock() - t0 < 0.8 and not HS.door and HalloweenDoors and EventOn() do
-        CloseDialogue(); task.wait(0.05)
+    while os.clock() - t0 < 3 and not HS.door and HalloweenDoors and EventOn() do
+        CloseDialogue()
+        task.wait(0.05)
     end
-    if not HS.door then
-        local _, fn = HalloweenRemotes()
-        if fn then task.spawn(function() pcall(function() fn:InvokeServer(inst) end) end) end
-        t0 = os.clock()
-        while os.clock() - t0 < 2 and not HS.door and HalloweenDoors and EventOn() do
-            CloseDialogue(); task.wait(0.05)
-        end
-    end
+
     CloseDialogue()
-    if HS.door then HS.tally.doors += 1
-    else HS.doorSkip[inst] = os.clock() + CFG.DoorSkip; HS.note = "porta sem resposta" end
+    if HS.door then
+        HS.tally.doors += 1
+    else
+        HS.doorSkip[inst] = os.clock() + CFG.DoorSkip
+        HS.note = ok and "porta sem confirmação" or ("falha ao abrir: " .. tostring(result))
+    end
 end
 
 function TrackDoorClose(door)
     if not door or not door.inst then return end
     door.closed = false
-    if HS.doorClosedCheck then pcall(function() HS.doorClosedCheck:Disconnect() end) end
+    door.flowDone = door.boss == true
+    door.closeTimedOut = false
+
+    if HS.doorClosedCheck then
+        pcall(function() task.cancel(HS.doorClosedCheck) end)
+    end
+
     HS.doorClosedCheck = task.spawn(function()
-        local t0 = os.clock()
-        while os.clock() - t0 < CFG.DoorMax do
-            if not door.inst.Parent then door.closed = true; return end
-            local open = door.inst:GetAttribute("DoorOpen")
-            local shut = door.inst:GetAttribute("DoorShut")
-            if open == false and shut ~= nil then door.closed = true; return end
-            if open == false then
-                local cd = tonumber(door.inst:GetAttribute("CooldownUntil")) or 0
-                if cd > ServerNow() then door.closed = true; return end
+        local started = os.clock()
+        while not Destroyed and door.inst and door.inst.Parent do
+            -- DoorShut é o marcador real de fechamento do evento.
+            if door.inst:GetAttribute("DoorShut") then
+                door.closed = true
+                return
             end
-            task.wait(0.4)
+            if os.clock() - started >= CFG.DoorMax then
+                -- Timeout não significa fechamento.
+                door.closeTimedOut = true
+                return
+            end
+            task.wait(0.2)
         end
-        door.closed = true
+        if not door.inst or not door.inst.Parent then
+            door.closed = true
+        end
     end)
 end
 
---=====================================================================
--- 18. EVENTOS — fluxos + tabela com TODOS os eventos
---=====================================================================
 function PortalPos()
     local now = os.clock()
     if HS.portalCache and HS.portalCache.Parent and now - HS.portalCacheAt < 1 then return HS.portalCache end
@@ -956,7 +1015,8 @@ function genericNpcFlow(inst)
 end
 function gravediggerFlow(inst)
     local pos = GetPart(inst); pos = pos and pos.Position or Vector3.zero
-    task.wait(2); FireEvent("Ready"); task.wait(4); FireEvent("Choose", math.random(1,4)); task.wait(3)
+    task.wait(2); FireDoorEvent(inst, "Gravedigger", "Ready"); task.wait(4)
+    FireDoorEvent(inst, "Gravedigger", "Choose", math.random(1,4)); task.wait(3)
     local t0 = os.clock()
     while os.clock() - t0 < 60 do
         local best
@@ -984,10 +1044,10 @@ function sweetRideFlow(inst)
     local remote = folder and folder:FindFirstChild("SweetRide")
     if remote and remote:IsA("RemoteEvent") then
         task.wait(1.5)
-        pcall(function() remote:FireServer("Rob") end)
+        pcall(function() remote:FireServer("Help") end)
         task.wait(4)
     else
-        task.wait(1.5); FireEvent("Rob"); task.wait(4)
+        task.wait(1.5); FireEvent("Help"); task.wait(4)
     end
     local pos = GetPart(inst); pos = pos and pos.Position or Vector3.zero
     local t0 = os.clock()
@@ -1054,10 +1114,30 @@ function cardGame()
     end
     return false
 end
-function tarotFlow(inst) task.wait(2); FireEvent("Read"); task.wait(2); cardGame(); task.wait(1); FireEvent("Done") end
-function freeRollFlow(inst) task.wait(2); FireEvent("Roll"); task.wait(6.5); FireEvent("Revealed"); task.wait(3); FireEvent("Done") end
+function tarotFlow(inst)
+    task.wait(2)
+    FireDoorEvent(inst, "TarotReading", "Read")
+    task.wait(2)
+    cardGame()
+    task.wait(1)
+    FireDoorEvent(inst, "TarotReading", "Done")
+end
+function freeRollFlow(inst)
+    task.wait(2)
+    FireDoorEvent(inst, "FreeRoll", "Roll")
+    task.wait(6.5)
+    FireDoorEvent(inst, "FreeRoll", "Revealed")
+    task.wait(3)
+    FireDoorEvent(inst, "FreeRoll", "Done")
+end
 function ghostFlow(inst) HS.ghostUntil = os.clock() + CFG.CandyWindow; task.wait(1) end
-function fruitDealerFlow(inst) task.wait(2); FireEvent("Rob"); task.wait(3); FireEvent("Beg"); task.wait(2); FireEvent("Done") end
+function fruitDealerFlow(inst)
+    task.wait(2)
+    -- Rob e Beg são escolhas alternativas; não devem ser enviadas em sequência.
+    FireDoorEvent(inst, "FruitDealer", "Rob")
+    task.wait(3)
+    FireDoorEvent(inst, "FruitDealer", "Done")
+end
 function zeroFlow(inst) task.wait(1.5); FireEvent("Accept"); task.wait(2); FireEvent("AcceptReward") end
 function zeroSlapFlow(inst) task.wait(2); FireEvent("AcceptReward") end
 
@@ -1120,7 +1200,11 @@ function StartEventFlow(evName, inst)
             HS.lastError = tostring(err)
             warn("[PH] evento: " .. HS.lastError)
         end
-        HS.target = nil; Halt()
+        HS.target = nil
+        Halt()
+        if HS.door and HS.door.inst == inst then
+            HS.door.flowDone = true
+        end
         HS.busy, HS.eventName = false, nil
     end)
 end
@@ -1150,11 +1234,15 @@ function ListenHalloween()
         elseif kind == "HellfireBossDeath" then
             HS.tally.bossKills += 1
         elseif kind == "HellfireBossExit" then
-            HS.domain, HS.door = nil, nil
+            HS.domain = nil
+            if HS.door then HS.door.flowDone = true end
         elseif kind == "BossTeleportSound" then
             if os.clock() - HS.portalAt < 90 then
                 HS.domain, HS.lastFight = { at = os.clock() }, os.clock()
-                if HS.door and HS.door.boss then HS.door.done = true end
+                if HS.door and HS.door.boss then
+                    HS.door.done = true
+                    HS.door.flowDone = true
+                end
             end
         elseif kind == "PromptEventTeleport" then
             if AcceptTeleport then task.delay(1, function() FireEvent("AcceptEventTeleport") end) end
@@ -1165,7 +1253,10 @@ function ListenHalloween()
                 table.insert(HS.cardList, { pos = inst, at = os.clock() })
             end
         elseif kind == "EventFinished" then
-            if HS.door and HS.door.inst == inst then HS.door.done = true end
+            if HS.door and HS.door.inst == inst then
+                HS.door.done = true
+                HS.door.flowDone = true
+            end
         end
     end)
     table.insert(CONNS, conn)
@@ -1368,22 +1459,45 @@ function MainStep()
     if focus then FightOrbit(focus); return end
 
     local d = HS.door
-    if d and not d.done then
-        if now - d.at > CFG.DoorMax or not (d.inst and d.inst.Parent) then HS.door = nil
-        elseif d.closed or d.done then HS.door = nil
+    if d then
+        if not (d.inst and d.inst.Parent) then
+            HS.door = nil
         elseif d.boss then
-            local pt = (HalloweenDoors and HellfirePortal) and PortalPos() or nil
-            if pt then EnterPortal(pt); return end
-            if not (HalloweenDoors and HellfirePortal) or now - d.at > 15 then d.done = true
-            else HS.mode = "ESPERANDO PORTAL"; Halt(); return end
+            if d.closed then
+                HS.door = nil
+            else
+                local pt = (HalloweenDoors and HellfirePortal) and PortalPos() or nil
+                if pt then EnterPortal(pt); return end
+                if not (HalloweenDoors and HellfirePortal) or now - d.at > 15 then
+                    d.flowDone = true
+                else
+                    HS.mode = "ESPERANDO PORTAL"
+                    Halt()
+                    return
+                end
+                HS.mode = "AGUARDANDO FECHAMENTO"
+                Halt()
+                return
+            end
         else
-            if not d.accepted and now - d.at > 1 then
+            if not d.flowDone and not d.accepted and now - d.at > 1 then
                 d.accepted = true
                 FireEvent(AcceptRewards and "AcceptReward" or "DeclineReward")
-                d.done = true
             end
             CloseDialogue()
-            HS.mode = "EVENTO " .. (d.event or "?"); task.wait(0.2); return
+
+            -- Libera a próxima porta somente após o fluxo e o DoorShut.
+            if d.flowDone and d.closed then
+                HS.door = nil
+            elseif d.closeTimedOut then
+                HS.doorSkip[d.inst] = os.clock() + CFG.DoorSkip
+                HS.note = "evento expirou sem DoorShut"
+                HS.door = nil
+            else
+                HS.mode = "EVENTO " .. (d.event or "?")
+                task.wait(0.2)
+                return
+            end
         end
     end
 
@@ -2066,4 +2180,4 @@ task.spawn(function()
     end
 end)
 
-GodLib:NotifySuccess("Pumpkin Hunt Premium", "Pumpkin Hunt Pronto Para Molestar Sapão🐸🎃"
+GodLib:NotifySuccess("Pumpkin Hunt Premium", "Pumpkin Hunt Pronto Para Molestar Sapão🐸🎃")
