@@ -1,0 +1,2069 @@
+
+local GodLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/thayllon12/Dev-Premiun/refs/heads/main/GodLib"))()
+if not GodLib then warn("[Pumpkin Hunt] GodLib não carregou.") return end
+
+-- 2. SERVIÇOS
+Players           = game:GetService("Players")
+RunService        = game:GetService("RunService")
+TweenService      = game:GetService("TweenService")
+ReplicatedStorage = game:GetService("ReplicatedStorage")
+Workspace         = game:GetService("Workspace")
+VirtualUser       = game:GetService("VirtualUser")
+HttpService       = game:GetService("HttpService")
+Lighting          = game:GetService("Lighting")
+CollectionService = game:GetService("CollectionService")
+
+Player = Players.LocalPlayer
+Env    = (getgenv and getgenv()) or _G
+if Env.PumpkinHuntCleanup then pcall(Env.PumpkinHuntCleanup) end
+
+--=====================================================================
+-- 3. GLOBAIS / ESTADO
+--=====================================================================
+RUN_ID = tostring(os.clock()) .. "_" .. tostring(math.random(1, 1000000000))
+CONNS  = {}
+
+Destroyed = false
+GodFarm = false
+ShowESP = true
+GodFPS = false
+AutoRollStore = true
+AutoBringFruits = true
+SelectedToolType = "Melee"
+FastAttack = false
+OrbitMode = 1
+HalloweenDoors = false
+AcceptRewards = true
+AcceptTeleport = true
+HellfirePortal = true
+DapperJackAuto = true
+CollectCards = true
+CandyCollect = true
+HalloweenRareFirst = false
+SkipOthersPumpkins = true
+
+LastEquip, LastAttack = 0, 0
+NoclipOn = false
+SavedCollide = {}
+CharCache, CharCacheAt, CharCacheChar = {}, 0, nil
+PhysFolder, PhysAttach, LV, AO = nil, nil, nil, nil
+LockedGates = {}
+DimBounds, DimBoundsAt = nil, 0
+StarKey, StarPos = nil, nil
+DialogueModule = nil
+FarmNPC, FarmPumpkin, FarmScanAt = nil, nil, 0
+DeadNPCs       = setmetatable({}, { __mode = "k" })
+HiddenPumpkins = setmetatable({}, { __mode = "k" })
+PumpkinTries   = setmetatable({}, { __mode = "k" })
+BringTweens    = {}
+TweenInfoBring = TweenInfo.new(0.35, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
+ESPBillboards  = {}
+GodFPSGui      = nil
+GodFPSOriginals = {}
+GodFPSOriginalLighting = {}
+
+HS = {
+    door = nil, target = nil, portalDoor = nil, portalAt = 0,
+    portalCache = nil, portalCacheAt = 0, domain = nil, lastFight = 0,
+    halloweenAt = 0, startedAt = os.time(),
+    doorSet  = setmetatable({}, { __mode = "k" }),
+    doorSkip = setmetatable({}, { __mode = "k" }),
+    skip     = setmetatable({}, { __mode = "k" }),
+    ignored  = setmetatable({}, { __mode = "k" }),
+    tally = { kills=0, pumpkins=0, doors=0, rare=0, fruits=0, bosses=0, bossKills=0, cards=0, candy=0 },
+    cardList = {}, candyUntil = 0, bossSeen = false,
+    mode = "OFF", note = "", tpHour = nil, listening = false, lastError = nil,
+    doorClosedCheck = nil,
+}
+
+--=====================================================================
+-- 4. CONSTANTES — SEAS / PORTAS / GATES
+--=====================================================================
+SEA_OF_PLACE = {
+    [2753915549] = 1, [85211729168715] = 1,
+    [4442272183] = 2, [79091703265657] = 2,
+    [7449423635] = 3, [100117331123089] = 3,
+}
+DOOR_SPOTS = {
+    [1] = Vector3.new(-664, 5, 1589),
+    [2] = Vector3.new(-403, 73, 203),
+}
+Entrances = {
+    Sea1 = {
+        { Id="Sea1_UpperSky",   Name="Upper Sky",  GatePosition=CFrame.new(-6024, 5469, 2203), RequestName="requestEntrance", RequestPosition=Vector3.new(-4166.61, 1093.698, -347.162),  DestinationPosition=CFrame.new(-4167, 1093, -347) },
+        { Id="Sea1_Sky",        Name="Sky",        GatePosition=CFrame.new(-4167, 1093, -347),  RequestName="requestEntrance", RequestPosition=Vector3.new(-6023.577, 5469.72, 2203.308), DestinationPosition=CFrame.new(-6024, 5469, 2203) },
+        { Id="Sea1_Underwater", Name="Underwater", GatePosition=CFrame.new(61162, 19, 1961),   RequestName="requestEntrance", RequestPosition=Vector3.new(3864.688, 6.737, -1926.214), DestinationPosition=CFrame.new(4050, 23, -1815) },
+        { Id="Sea1_Whirlpool",  Name="Whirlpool",  GatePosition=CFrame.new(4050, 23, -1815),   RequestName="requestEntrance", RequestPosition=Vector3.new(61163.852, 11.68, 1819.784), DestinationPosition=CFrame.new(61162, 19, 1961) },
+    },
+    Sea2 = {
+        { Id="Sea2_HauntedShip",    Name="Haunted Ship", GatePosition=CFrame.new(922, 126, 32850),  RequestName="requestEntrance", RequestPosition=Vector3.new(-6508.558, 89.035, -132.84), DestinationPosition=CFrame.new(-6508, 89, -133) },
+        { Id="Sea2_Cemiterio",      Name="Cemitério",    GatePosition=CFrame.new(-6508, 89, -133),  RequestName="requestEntrance", RequestPosition=Vector3.new(923.213, 126.976, 32852.832), DestinationPosition=CFrame.new(922, 126, 32850) },
+        { Id="Sea2_InsideMansion",  Name="Dentro da Mansão", GatePosition=CFrame.new(2285, 16, 905), RequestName="requestEntrance", RequestPosition=Vector3.new(-286.986, 306.137, 598.392), DestinationPosition=CFrame.new(-287, 306, 599) },
+        { Id="Sea2_OutsideMansion", Name="Fora da Mansão",   GatePosition=CFrame.new(-287, 306, 599), RequestName="requestEntrance", RequestPosition=Vector3.new(2284.909, 15.538, 904.972), DestinationPosition=CFrame.new(2285, 16, 905) },
+    },
+    Sea3 = {
+        { Id="Sea3_Castle",  Name="Castelo", GatePosition=CFrame.new(-5056, 315, -3179),  RequestName="requestEntrance", RequestPosition=Vector3.new(-12463.603, 378.327, -7566.083), DestinationPosition=CFrame.new(5665, 1013, -338) },
+        { Id="Sea3_Hydra",   Name="Hydra",   GatePosition=CFrame.new(5665, 1013, -338),   RequestName="requestEntrance", RequestPosition=nil, DestinationPosition=CFrame.new(-5056, 315, -3179) },
+        { Id="Sea3_Mansion", Name="Mansão",  GatePosition=CFrame.new(-12464, 375, -7550), RequestName="requestEntrance", RequestPosition=Vector3.new(-5060.412, 318.502, -3193.225), DestinationPosition=CFrame.new(-5056, 315, -3179) },
+    },
+}
+
+--=====================================================================
+-- 5. CONFIG (CFG)
+--=====================================================================
+CFG = {
+    -- Movimento / física
+    FarmSpeedFar = 200, FarmSpeedNear = 250, FarmNearDist = 150,
+    NPCHeight = 10, ArrivalDistance = 2, PumpkinDistance = 3,
+    AttackRadius = 100, AttackDelay = 0.04, FastAttackDelay = 0,
+    ScanInterval = 0.15,
+    WaterClearance = 4, WaterSize = Vector3.new(1000, 112, 1000),
+
+    -- Órbita
+    OrbitRadius = 15, OrbitSpeed = 5, OrbitHeight = 5, TopHeight = 15,
+    DivineChangeTime = 0.07, StarChangeTime = 0.12, PredictionTime = 0.22,
+
+    -- Gates (requestEntrance)
+    GateWait = 0.5, GateExactDistance = 2.5, GateStableTime = 0.12,
+    GateRetryDelay = 0.5, GateTeleportTimeout = 2.5, GateTeleportDistance = 250,
+    GateMinimumGain = 500, GateMinimumRatio = 0.15, GateLockTime = 3, GateFarDist = 400,
+
+    -- Dimensão (Escape V)
+    DimensionMargin = 15, DimensionRefresh = 0.75,
+
+    -- Evento
+    EventMinutes = 10, DialogWindow = 10,
+    DoorMax = 45, DoorSkip = 20, DoorRescan = 3, KnockStand = 3,
+    PortalWait = 25,
+
+    -- Combate / mobs
+    TargetSearch = 2000, DomainSearch = 1500, DomainTimeout = 25,
+    EnemyTimeout = 20, EnemyIgnoreTime = 20,
+
+    -- Candy / fruta
+    CandyRange = 300, CandyWindow = 25,
+    FruitRange = 1500, FruitSkip = 60,
+
+    -- Bring
+    BringRange = 300, MaxBringMobs = 10, BringInterval = 0.25,
+
+    -- Abóbora — TROCA INSTANTÂNEA
+    PumpkinHitInterval = 0.05,
+    PumpkinStuckWindow = 0.8,
+    PumpkinStuckHits   = 6,
+    PumpkinScanTimeout = 0.2,
+
+    IdleWait = 0.2,
+    SaveFileName = "PumpkinHuntStates.json",
+}
+
+--=====================================================================
+-- 6. SAVE / LOAD
+--=====================================================================
+function GetSavePath()
+    if writefile and isfolder then
+        local folder = "PumpkinHunt"
+        if not isfolder(folder) then pcall(makefolder, folder) end
+        return folder .. "/" .. CFG.SaveFileName
+    end
+end
+function SaveStates()
+    local path = GetSavePath(); if not path or not writefile then return end
+    local data = {
+        GodFarm=GodFarm, ShowESP=ShowESP, GodFPS=GodFPS,
+        AutoRollStore=AutoRollStore, AutoBringFruits=AutoBringFruits,
+        SelectedToolType=SelectedToolType, FastAttack=FastAttack, OrbitMode=OrbitMode,
+        HalloweenDoors=HalloweenDoors, AcceptRewards=AcceptRewards, AcceptTeleport=AcceptTeleport,
+        HellfirePortal=HellfirePortal, DapperJackAuto=DapperJackAuto, CollectCards=CollectCards,
+        CandyCollect=CandyCollect, HalloweenRareFirst=HalloweenRareFirst, SkipOthersPumpkins=SkipOthersPumpkins,
+        Tune = { EnemyTimeout=CFG.EnemyTimeout, EventMinutes=CFG.EventMinutes },
+        GamePlaceId = game.PlaceId,
+    }
+    local ok, enc = pcall(function() return HttpService:JSONEncode(data) end)
+    if ok then pcall(writefile, path, enc) end
+end
+function LoadStates()
+    local path = GetSavePath()
+    if not path or not readfile or not isfile then return nil end
+    local ok, e = pcall(isfile, path); if not ok or not e then return nil end
+    local ok2, c = pcall(readfile, path); if not ok2 or not c then return nil end
+    local ok3, d = pcall(function() return HttpService:JSONDecode(c) end)
+    if not ok3 or type(d) ~= "table" then return nil end
+    if d.GamePlaceId and d.GamePlaceId ~= game.PlaceId then return nil end
+    return d
+end
+Saved = LoadStates()
+if Saved then
+    if Saved.GodFarm ~= nil then GodFarm = Saved.GodFarm end
+    if Saved.ShowESP ~= nil then ShowESP = Saved.ShowESP end
+    if Saved.GodFPS ~= nil then GodFPS = Saved.GodFPS end
+    if Saved.AutoRollStore ~= nil then AutoRollStore = Saved.AutoRollStore end
+    if Saved.AutoBringFruits ~= nil then AutoBringFruits = Saved.AutoBringFruits end
+    if Saved.SelectedToolType then SelectedToolType = Saved.SelectedToolType end
+    if Saved.FastAttack ~= nil then FastAttack = Saved.FastAttack end
+    if type(Saved.OrbitMode) == "number" then OrbitMode = Saved.OrbitMode end
+    if Saved.HalloweenDoors ~= nil then HalloweenDoors = Saved.HalloweenDoors end
+    if Saved.AcceptRewards ~= nil then AcceptRewards = Saved.AcceptRewards end
+    if Saved.AcceptTeleport ~= nil then AcceptTeleport = Saved.AcceptTeleport end
+    if Saved.HellfirePortal ~= nil then HellfirePortal = Saved.HellfirePortal end
+    if Saved.DapperJackAuto ~= nil then DapperJackAuto = Saved.DapperJackAuto end
+    if Saved.CollectCards ~= nil then CollectCards = Saved.CollectCards end
+    if Saved.CandyCollect ~= nil then CandyCollect = Saved.CandyCollect end
+    if Saved.HalloweenRareFirst ~= nil then HalloweenRareFirst = Saved.HalloweenRareFirst end
+    if Saved.SkipOthersPumpkins ~= nil then SkipOthersPumpkins = Saved.SkipOthersPumpkins end
+    if type(Saved.Tune) == "table" then
+        for k, v in pairs(Saved.Tune) do
+            if CFG[k] ~= nil and type(v) == "number" then CFG[k] = v end
+        end
+    end
+end
+
+--=====================================================================
+-- 7. UTILS GERAIS
+--=====================================================================
+function ServerNow()
+    local ok, t = pcall(function() return Workspace:GetServerTimeNow() end)
+    return ok and t or os.time()
+end
+function EventOn() return os.date("!*t").min < CFG.EventMinutes end
+function SeaSpot()
+    local sea = SEA_OF_PLACE[game.PlaceId]
+    return sea and DOOR_SPOTS[sea] or nil
+end
+function CurrentSeaKey()
+    local sea = SEA_OF_PLACE[game.PlaceId]
+    return sea and ("Sea" .. sea) or nil
+end
+function ActiveEntrances()
+    local k = CurrentSeaKey()
+    return k and Entrances[k] or {}
+end
+function GetRoot() local c = Player.Character; return c and c:FindFirstChild("HumanoidRootPart") end
+function GetParts()
+    local c = Player.Character; if not c then return nil, nil end
+    local r = c:FindFirstChild("HumanoidRootPart")
+    local h = c:FindFirstChildOfClass("Humanoid")
+    if not r or not h or h.Health <= 0 then return nil, nil end
+    return r, h
+end
+function HealthPct()
+    local _, h = GetParts()
+    if not h or h.MaxHealth <= 0 then return 1 end
+    return h.Health / h.MaxHealth
+end
+
+function NetFolder()   local m = ReplicatedStorage:FindFirstChild("Modules"); return m and m:FindFirstChild("Net") end
+function NetRemote(n)  local f = NetFolder(); return f and f:FindFirstChild("RE/" .. n) end
+function NetFunction(n)local f = NetFolder(); return f and f:FindFirstChild("RF/" .. n) end
+function CommFRemote()
+    local r = ReplicatedStorage:FindFirstChild("Remotes")
+    return r and r:FindFirstChild("CommF_")
+end
+function HalloweenRemotes()
+    local f = ReplicatedStorage:FindFirstChild("Remotes")
+    if not f then return nil, nil end
+    return f:FindFirstChild("HalloweenEvent"), f:FindFirstChild("HalloweenFunction")
+end
+function FireEvent(name)
+    local ev = HalloweenRemotes()
+    if ev then pcall(function() ev:FireServer(name) end) end
+end
+function CloseDialogue()
+    if os.clock() - HS.halloweenAt > CFG.DialogWindow then return end
+    pcall(function()
+        if not DialogueModule then
+            DialogueModule = require(ReplicatedStorage:WaitForChild("DialogueController", 2))
+        end
+        if DialogueModule and DialogueModule.Active then DialogueModule.close() end
+    end)
+end
+
+function GetPart(o)
+    if not o then return nil end
+    if o:IsA("BasePart") then return o end
+    if o:IsA("Model") then
+        return o.PrimaryPart or o:FindFirstChild("HumanoidRootPart", true)
+            or o:FindFirstChild("Head", true) or o:FindFirstChildWhichIsA("BasePart", true)
+    end
+end
+function GetHead(m)
+    local h = m and m:FindFirstChild("Head", true)
+    if h and h:IsA("BasePart") then return h end
+    return GetPart(m)
+end
+function PartOf(m) return GetPart(m) end
+function IsAliveModel(m)
+    local h = m and m:FindFirstChildOfClass("Humanoid")
+    return h ~= nil and h.Health > 0
+end
+
+function StripName(n) return (string.lower(n):gsub("[%s%p_]+", "")) end
+function IsSnowman(m)  return string.find(StripName(m.Name), "pumpkinsnowman", 1, true) ~= nil end
+function IsJack(m)
+    local l = StripName(m.Name)
+    return string.find(l, "jackolantern", 1, true) ~= nil or string.find(l, "lantern", 1, true) ~= nil
+end
+function IsFarmNPC(m)
+    local n = StripName(m.Name)
+    if string.find(n, "dapper", 1, true) then return false end
+    return string.find(n, "pumpkin", 1, true) ~= nil
+        or string.find(n, "lantern", 1, true) ~= nil
+        or string.find(n, "jack", 1, true) ~= nil
+end
+function IsDapperJack(m) return StripName(m.Name) == "dapperjack" end
+function IsHellfireGas(m) return string.find(StripName(m.Name), "hellfiregas", 1, true) ~= nil end
+function BossActive(inst) return inst ~= nil and inst:GetAttribute("BOSS_ACTIVE_SERVER") == true end
+
+function PumpkinAlive(obj)
+    if not obj or not obj.Parent then return false end
+    if obj:IsA("BasePart") then return obj.Transparency == 0 end
+    for _, v in ipairs(obj:GetDescendants()) do
+        if v:IsA("BasePart") and v.Transparency == 0 then return true end
+    end
+    return false
+end
+function AnyVisible(obj) return PumpkinAlive(obj) end
+function HasM1Tag(i)
+    local ok, t = pcall(function() return CollectionService:HasTag(i, "M1HitRegistry") end)
+    return ok and t == true
+end
+function EventKind(ev)
+    if type(ev) ~= "string" then return "game" end
+    local low = string.lower(ev)
+    if ev == "Boss Fight" or string.find(low, "hell", 1, true) then return "boss" end
+    return "game"
+end
+function ToolMatches(t)
+    if not t or not t:IsA("Tool") then return false end
+    return t.ToolTip == SelectedToolType or t.Name:lower():find(SelectedToolType:lower(), 1, true) ~= nil
+end
+function EnsureTool()
+    if os.clock() - LastEquip < 1 then return end
+    LastEquip = os.clock()
+    local char = Player.Character; local _, hum = GetParts()
+    if not char or not hum then return end
+    if ToolMatches(char:FindFirstChildOfClass("Tool")) then return end
+    local bp = Player:FindFirstChild("Backpack"); if not bp then return end
+    for _, item in ipairs(bp:GetChildren()) do
+        if ToolMatches(item) then hum:EquipTool(item); return end
+    end
+end
+
+--=====================================================================
+-- 8. PROXIMIDADE / WATER / COMBATE BASE
+--=====================================================================
+function WaterFloor(pos)
+    if pos.Y < -1000 then return nil end
+    local map = Workspace:FindFirstChild("Map")
+    local p = map and map:FindFirstChild("WaterBase-Plane")
+    if not (p and p:IsA("BasePart")) then return nil end
+    local lp = p.CFrame:PointToObjectSpace(pos); local sz = p.Size
+    if math.abs(lp.X) > sz.X / 2 or math.abs(lp.Z) > sz.Z / 2 then return nil end
+    return p.Position.Y + math.max(sz.Y / 2, 56) + CFG.WaterClearance
+end
+function SafePos(pos)
+    local f = WaterFloor(pos)
+    if f and pos.Y < f then return Vector3.new(pos.X, f, pos.Z) end
+    return pos
+end
+function EnforceWater(root)
+    local sp = SafePos(root.Position)
+    if (sp - root.Position).Magnitude > 0.05 then
+        root.CFrame = CFrame.new(sp) * (root.CFrame - root.CFrame.Position)
+        root.AssemblyLinearVelocity = Vector3.zero
+    end
+end
+
+--=====================================================================
+-- 9. FLIGHT / PHYSICS
+--=====================================================================
+function DestroyPhysics()
+    if LV and LV.Parent then LV.VectorVelocity = Vector3.zero end
+    if PhysFolder then pcall(function() PhysFolder:Destroy() end) end
+    if PhysAttach then pcall(function() PhysAttach:Destroy() end) end
+    PhysFolder, PhysAttach, LV, AO = nil, nil, nil, nil
+end
+function EnsurePhysics()
+    local root = GetRoot(); if not root then return false end
+    NoclipOn = true
+    if PhysFolder and PhysFolder.Parent == root and LV and LV.Parent then return true end
+    DestroyPhysics()
+    PhysFolder = Instance.new("Folder"); PhysFolder.Name = "DFPhysics"; PhysFolder.Parent = root
+    PhysAttach = Instance.new("Attachment"); PhysAttach.Name = "DFAttach"; PhysAttach.Parent = root
+    LV = Instance.new("LinearVelocity")
+    LV.Attachment0 = PhysAttach
+    LV.RelativeTo = Enum.ActuatorRelativeTo.World
+    LV.VelocityConstraintMode = Enum.VelocityConstraintMode.Vector
+    LV.ForceLimitsEnabled = false
+    LV.MaxForce = math.huge
+    LV.VectorVelocity = Vector3.zero
+    LV.Parent = PhysFolder
+    AO = Instance.new("AlignOrientation")
+    AO.Attachment0 = PhysAttach
+    AO.Mode = Enum.OrientationAlignmentMode.OneAttachment
+    AO.RigidityEnabled = true
+    AO.MaxTorque = math.huge
+    AO.MaxAngularVelocity = math.huge
+    AO.Responsiveness = 200
+    AO.CFrame = root.CFrame
+    AO.Parent = PhysFolder
+    local _, h = GetParts()
+    if h then h.AutoRotate = false end
+    return true
+end
+function SetVelocity(v) if LV and LV.Parent then LV.VectorVelocity = v end end
+function Halt() SetVelocity(Vector3.zero) end
+function SetOrientation(pos, look)
+    if not AO or not AO.Parent then return end
+    local d = look - pos
+    if d.Magnitude > 0.001 then AO.CFrame = CFrame.lookAt(pos, pos + d.Unit) end
+end
+function FlyTo(dest)
+    if not EnsurePhysics() then return math.huge end
+    local root = GetRoot(); if not root then return math.huge end
+    dest = SafePos(dest)
+    local off = dest - root.Position; local d = off.Magnitude
+    if d <= CFG.ArrivalDistance then Halt(); return d end
+    local sp = d > CFG.FarmNearDist and CFG.FarmSpeedFar or CFG.FarmSpeedNear
+    SetVelocity(off.Unit * sp)
+    SetOrientation(root.Position, dest)
+    return d
+end
+function Release()
+    NoclipOn = false; Halt(); DestroyPhysics()
+    for part, was in pairs(SavedCollide) do
+        if part.Parent then pcall(function() part.CanCollide = was end) end
+    end
+    SavedCollide = {}
+    local c = Player.Character; local h = c and c:FindFirstChildOfClass("Humanoid")
+    if h then pcall(function() h.AutoRotate = true end) end
+end
+
+--=====================================================================
+-- 10. GATE / requestEntrance
+--=====================================================================
+function IsGateLocked(g) local u = LockedGates[g.Id]; return u ~= nil and os.clock() < u end
+function LockGate(g) LockedGates[g.Id] = os.clock() + CFG.GateLockTime end
+function BestGate(dest)
+    local root = GetRoot(); if not root then return nil end
+    local direct = (dest - root.Position).Magnitude
+    if direct <= CFG.GateMinimumGain then return nil end
+    local best, bc = nil, math.huge
+    for _, g in ipairs(ActiveEntrances()) do
+        if g.RequestPosition and not IsGateLocked(g) then
+            local route = (g.GatePosition.Position - root.Position).Magnitude + (g.DestinationPosition.Position - dest).Magnitude
+            local gain = direct - route
+            if gain >= CFG.GateMinimumGain and gain / math.max(direct,1) >= CFG.GateMinimumRatio and route < bc then
+                best, bc = g, route
+            end
+        end
+    end
+    return best
+end
+function RequestGate(g)
+    local c = CommFRemote(); if not c then return false end
+    return pcall(function() c:InvokeServer(g.RequestName or "requestEntrance", g.RequestPosition) end)
+end
+function RouteGate(g, dest)
+    HS.mode = "GATE " .. g.Name
+    local t0 = os.clock()
+    while not Destroyed and os.clock() - t0 < 12 do
+        local r = GetRoot(); if not r then return false end
+        if (g.GatePosition.Position - r.Position).Magnitude <= CFG.GateExactDistance then break end
+        FlyTo(g.GatePosition.Position); RunService.Heartbeat:Wait()
+    end
+    Halt(); task.wait(CFG.GateStableTime)
+    local r = GetRoot(); if not r then return false end
+    local start, lastReq, t1 = r.Position, -math.huge, os.clock()
+    while not Destroyed and os.clock() - t1 < CFG.GateTeleportTimeout + 2 do
+        if os.clock() - lastReq >= CFG.GateRetryDelay then lastReq = os.clock(); RequestGate(g) end
+        r = GetRoot(); if not r then return false end
+        if (r.Position - start).Magnitude >= CFG.GateTeleportDistance then LockGate(g); return true end
+        task.wait(0.05)
+    end
+    LockGate(g); return false
+end
+function TravelFar(dest)
+    local root = GetRoot(); if not root then return false end
+    if (dest - root.Position).Magnitude < CFG.GateFarDist then return false end
+    if IsInDimensionPos(root.Position) then return false end
+    local g = BestGate(dest); if not g then return false end
+    local ok = RouteGate(g, dest)
+    if ok then task.wait(CFG.GateWait) end
+    return ok
+end
+function Go(dest, stop, timeout, abort)
+    stop = stop or 3; timeout = timeout or 25
+    local t0 = os.clock(); TravelFar(dest)
+    if not EnsurePhysics() then return false end
+    while not Destroyed do
+        local r = GetRoot(); if not r then Halt(); return false end
+        if (dest - r.Position).Magnitude <= stop then Halt(); return true end
+        if os.clock() - t0 > timeout then Halt(); return false end
+        if abort and abort() then Halt(); return false end
+        FlyTo(dest); RunService.Heartbeat:Wait()
+    end
+    Halt(); return false
+end
+function GoAuto(pos, stop, abort) return Go(pos, stop, nil, abort) end
+
+--=====================================================================
+-- 11. ORBIT
+--=====================================================================
+function OrbitOffset()
+    local t, r = os.clock(), CFG.OrbitRadius
+    if OrbitMode == 1 then
+        local a = t * CFG.OrbitSpeed
+        return Vector3.new(math.cos(a)*r, CFG.OrbitHeight, math.sin(a)*r)
+    elseif OrbitMode == 2 then
+        local i = math.floor(t / CFG.DivineChangeTime) % 5
+        if i==0 then return Vector3.new(r,0,0) end
+        if i==1 then return Vector3.new(-r,0,0) end
+        if i==2 then return Vector3.new(0,0,r) end
+        if i==3 then return Vector3.new(0,0,-r) end
+        return Vector3.new(0,r,0)
+    elseif OrbitMode == 3 then
+        local k = math.floor(t / CFG.StarChangeTime)
+        if StarKey ~= k or not StarPos then
+            StarKey = k
+            local th, ph = math.random()*math.pi*2, math.acos(2*math.random()-1)
+            StarPos = Vector3.new(math.sin(ph)*math.cos(th)*r, math.cos(ph)*r, math.sin(ph)*math.sin(th)*r)
+        end
+        return StarPos
+    end
+    return Vector3.new(0, CFG.TopHeight, 0)
+end
+
+--=====================================================================
+-- 12. ATTACK / HIT
+--=====================================================================
+function FarmAttack(target, hitPart)
+    local now = os.clock()
+    local delay = FastAttack and CFG.FastAttackDelay or CFG.AttackDelay
+    if now - LastAttack < delay then return end
+    LastAttack = now
+    EnsureTool()
+    local ra, rh = NetRemote("RegisterAttack"), NetRemote("RegisterHit")
+    if ra and rh then
+        pcall(function()
+            ra:FireServer(0)
+            rh:FireServer(hitPart, { { target, hitPart } })
+        end)
+    end
+end
+
+--=====================================================================
+-- 13. COMBAT (orbita + FightOrbit)
+--=====================================================================
+function FightOrbit(m)
+    local hum = m:FindFirstChildOfClass("Humanoid"); if not hum then return end
+    HS.target = m; HS.lastFight = os.clock()
+    local t0 = os.clock()
+    while not Destroyed and m.Parent and hum.Health > 0 and AnyVisible(m) do
+        if os.clock() - t0 > CFG.EnemyTimeout then
+            HS.ignored[m] = os.clock() + CFG.EnemyIgnoreTime; break
+        end
+        local root, tp = GetRoot(), GetPart(m)
+        if not root or not tp then break end
+        EnsurePhysics()
+        HS.lastFight = os.clock(); HS.mode = "COMBATE"; HS.note = m.Name
+        local pred = tp.Position + tp.AssemblyLinearVelocity * CFG.PredictionTime
+        FlyTo(SafePos(pred + OrbitOffset()))
+        local r2 = GetRoot()
+        if r2 and (pred - r2.Position).Magnitude <= CFG.AttackRadius then
+            FarmAttack(m, m:FindFirstChild("HumanoidRootPart") or tp)
+        end
+        RunService.Heartbeat:Wait()
+    end
+    HS.target = nil; Halt()
+end
+
+--=====================================================================
+-- 14. NPC SCAN
+--=====================================================================
+function NPCValid(npc) return npc and npc.Parent ~= nil and IsAliveModel(npc) and GetHead(npc) ~= nil end
+function GetNearestFarmNPC()
+    local folder = Workspace:FindFirstChild("Enemies")
+    local root = GetRoot(); if not folder or not root then return nil end
+    local best, bd = nil, math.huge
+    for _, e in ipairs(folder:GetDescendants()) do
+        if e:IsA("Model") and not DeadNPCs[e] and IsFarmNPC(e) and IsAliveModel(e) then
+            local p = GetHead(e)
+            if p then
+                local d = (p.Position - root.Position).Magnitude
+                if d < bd then best, bd = e, d end
+            end
+        end
+    end
+    return best
+end
+function GetNearestFarmPumpkin()
+    local folder = Workspace:FindFirstChild("PumpkinHunt")
+    local root = GetRoot(); if not folder or not root then return nil end
+    local best, bd = nil, math.huge
+    for _, obj in ipairs(folder:GetChildren()) do
+        local cracked = obj:GetAttribute("PumpkinCrackedBy")
+        local others = SkipOthersPumpkins and cracked ~= nil and cracked ~= Player.UserId
+        if obj.Name == "Pumpkin" and not HiddenPumpkins[obj] and not others and PumpkinAlive(obj) then
+            local p = GetPart(obj)
+            if p then
+                local d = (p.Position - root.Position).Magnitude
+                if d < bd then best, bd = { root = obj, part = p }, d end
+            end
+        end
+    end
+    return best
+end
+
+--=====================================================================
+-- 15. PUMPKIN — estado + list
+--=====================================================================
+function PumpkinHitsOf(obj)
+    local h = obj and obj:GetAttribute("PumpkinHits")
+    return typeof(h) == "number" and h or 0
+end
+function PumpkinDone(obj)
+    if not obj or not obj.Parent then return true end
+    local s = obj:GetAttribute("PumpkinState")
+    return s ~= nil and s ~= "Idle"
+end
+
+--=====================================================================
+-- 16. FARM TICK — abóbora (INSTA-SWAP) + NPC
+--=====================================================================
+function FarmNpcStep(root, npc)
+    local head = GetHead(npc); if not head then return end
+    local dest = head.Position + Vector3.new(0, CFG.NPCHeight, 0)
+    TravelFar(dest)
+    root = GetRoot(); if not root then return end
+    FlyTo(dest)
+    HS.mode = "NPC " .. npc.Name
+    if (head.Position - root.Position).Magnitude <= CFG.AttackRadius then
+        FarmAttack(npc, head)
+    end
+end
+
+function FarmPumpkinStep(root, p)
+    local obj, part = p.root, p.part
+
+    if not obj or not obj.Parent or not part or not part.Parent then
+        if obj then HiddenPumpkins[obj] = true end
+        FarmPumpkin = nil
+        FarmScanAt = 0
+        return
+    end
+
+    local cracked = obj:GetAttribute("PumpkinCrackedBy")
+    if cracked ~= nil and cracked ~= Player.UserId then
+        HiddenPumpkins[obj] = true
+        FarmPumpkin = nil
+        FarmScanAt = 0
+        return
+    end
+
+    if not PumpkinAlive(obj) then
+        HS.tally.pumpkins += 1
+        if obj:GetAttribute("PumpkinRare") == true then
+            HS.tally.rare += 1
+        end
+
+        HiddenPumpkins[obj] = true
+        FarmPumpkin = nil
+        FarmScanAt = 0
+        return
+    end
+
+    -- TROCA IMEDIATA AO ATINGIR 3 HITS
+    local hits = PumpkinHitsOf(obj)
+
+    if hits >= 3 then
+        HiddenPumpkins[obj] = true
+        FarmPumpkin = nil
+        FarmScanAt = 0
+        return
+    end
+
+    local dest = part.Position
+    TravelFar(dest)
+
+    root = GetRoot()
+    if not root then return end
+
+    local dist = (dest - root.Position).Magnitude
+
+    if dist > CFG.PumpkinDistance then
+        FlyTo(dest)
+    else
+        Halt()
+    end
+
+    HS.mode = "ABÓBORA"
+
+    if dist <= CFG.AttackRadius then
+        FarmAttack(obj, part)
+    end
+end
+
+function FarmTick()
+    local root = GetRoot()
+    if not root then return end
+
+    local now = os.clock()
+
+    if FarmNPC and not NPCValid(FarmNPC) then
+        DeadNPCs[FarmNPC] = true
+        FarmNPC = nil
+    end
+
+    if FarmPumpkin then
+        local obj = FarmPumpkin.root
+
+        if not obj or not obj.Parent or not PumpkinAlive(obj) then
+            if obj then HiddenPumpkins[obj] = true end
+            FarmPumpkin = nil
+            FarmScanAt = 0
+
+        elseif PumpkinHitsOf(obj) >= 3 then
+            HiddenPumpkins[obj] = true
+            FarmPumpkin = nil
+            FarmScanAt = 0
+        end
+    end
+
+    if now - FarmScanAt >= CFG.ScanInterval
+        or (not FarmNPC and not FarmPumpkin) then
+
+        FarmScanAt = now
+
+        local npc = GetNearestFarmNPC()
+
+        if npc then
+            FarmNPC = npc
+            FarmPumpkin = nil
+        else
+            FarmNPC = nil
+            FarmPumpkin = GetNearestFarmPumpkin()
+        end
+    end
+
+    if FarmNPC then
+        FarmNpcStep(root, FarmNPC)
+    elseif FarmPumpkin then
+        FarmPumpkinStep(root, FarmPumpkin)
+    else
+        Halt()
+    end
+end
+
+--=====================================================================
+-- 17. PORTAS — scan / list / knock / track close
+--=====================================================================
+function NearestFocusTarget()
+    local folder = Workspace:FindFirstChild("Enemies")
+    local root = GetRoot(); if not folder or not root then return nil end
+    local ev = EventOn(); local inDomain = HS.domain ~= nil
+    local best, bd = nil, math.huge; local now = os.clock()
+    for _, m in ipairs(folder:GetChildren()) do
+        if m:IsA("Model") and (HS.ignored[m] or 0) < now and IsAliveModel(m) and AnyVisible(m) then
+            local p = GetPart(m)
+            if p then
+                local isBoss = IsDapperJack(m) and DapperJackAuto
+                local isFire = ev and IsHellfireGas(m)
+                local ok = inDomain or isBoss or isFire
+                if ok then
+                    local d = (p.Position - root.Position).Magnitude
+                    if d < bd and ((inDomain and d <= CFG.DomainSearch) or d <= CFG.TargetSearch) then
+                        best, bd = m, d
+                    end
+                end
+            end
+        end
+    end
+    return best
+end
+
+DoorAddedConn = Workspace.DescendantAdded:Connect(function(d)
+    if d.Name == "HalloweenDoor" then HS.doorSet[d] = true end
+end)
+table.insert(CONNS, DoorAddedConn)
+
+function ScanDoors()
+    for _, root in ipairs({ Workspace, Workspace:FindFirstChild("Map"), Workspace:FindFirstChild("HalloweenRealms") }) do
+        if root then
+            for _, d in ipairs(root:GetDescendants()) do
+                if d.Name == "HalloweenDoor" and d:IsA("Model") then HS.doorSet[d] = true end
+            end
+        end
+    end
+end
+
+function DoorList()
+    local out = {}
+    for d in pairs(HS.doorSet) do
+        if d.Parent and d:IsDescendantOf(Workspace) then
+            local pr = d:FindFirstChildWhichIsA("ProximityPrompt", true)
+            local part
+            if d:IsA("BasePart") then part = d
+            elseif pr and pr.Parent and pr.Parent:IsA("BasePart") then part = pr.Parent
+            else part = d:FindFirstChildWhichIsA("BasePart", true) end
+            if part then
+                table.insert(out, {
+                    inst = d, part = part, pos = part.Position, prompt = pr,
+                    open = d:GetAttribute("DoorOpen") == true,
+                    cool = tonumber(d:GetAttribute("CooldownUntil")) or 0,
+                    skip = HS.doorSkip[d] or 0,
+                })
+            end
+        else HS.doorSet[d] = nil end
+    end
+    return out
+end
+function PickDoor(list, from)
+    local now, sn = os.clock(), ServerNow()
+    local best, bd = nil, math.huge
+    for _, d in ipairs(list) do
+        if not d.open and d.cool <= sn and d.skip <= now then
+            local dist = (d.pos - from).Magnitude
+            if dist < bd then best, bd = d, dist end
+        end
+    end
+    return best
+end
+function KnockDoor(d)
+    HS.halloweenAt = os.clock()
+    local root = GetRoot(); if not root then return end
+
+    local inst = d.inst; local pr = d.prompt
+    if not pr or pr.Enabled == false then HS.doorSkip[inst] = os.clock() + CFG.DoorSkip; return end
+    if inst:GetAttribute("DoorOpen") == true then HS.doorSkip[inst] = os.clock() + 1; return end
+    local cd = tonumber(inst:GetAttribute("CooldownUntil")) or 0
+    if cd > ServerNow() then HS.doorSkip[inst] = os.clock() + 1; return end
+
+    local stand = (d.part.CFrame * CFrame.new(0, 0, CFG.KnockStand)).Position
+    HS.mode = "INDO PARA PORTA"
+    if (root.Position - stand).Magnitude > 4 then
+        if not GoAuto(stand, 1.5, function() return not HalloweenDoors or not EventOn() end) then
+            HS.doorSkip[inst] = os.clock() + CFG.DoorSkip; return
+        end
+    end
+    root = GetRoot()
+    if root then root.CFrame = CFrame.lookAt(root.Position, Vector3.new(d.part.Position.X, root.Position.Y, d.part.Position.Z)) end
+
+    HS.door = nil
+    HS.mode = "BATENDO"
+    if d.prompt and d.prompt.Enabled and fireproximityprompt then
+        pcall(function() fireproximityprompt(d.prompt) end)
+    end
+    local t0 = os.clock()
+    while os.clock() - t0 < 0.8 and not HS.door and HalloweenDoors and EventOn() do
+        CloseDialogue(); task.wait(0.05)
+    end
+    if not HS.door then
+        local _, fn = HalloweenRemotes()
+        if fn then task.spawn(function() pcall(function() fn:InvokeServer(inst) end) end) end
+        t0 = os.clock()
+        while os.clock() - t0 < 2 and not HS.door and HalloweenDoors and EventOn() do
+            CloseDialogue(); task.wait(0.05)
+        end
+    end
+    CloseDialogue()
+    if HS.door then HS.tally.doors += 1
+    else HS.doorSkip[inst] = os.clock() + CFG.DoorSkip; HS.note = "porta sem resposta" end
+end
+
+function TrackDoorClose(door)
+    if not door or not door.inst then return end
+    door.closed = false
+    if HS.doorClosedCheck then pcall(function() HS.doorClosedCheck:Disconnect() end) end
+    HS.doorClosedCheck = task.spawn(function()
+        local t0 = os.clock()
+        while os.clock() - t0 < CFG.DoorMax do
+            if not door.inst.Parent then door.closed = true; return end
+            local open = door.inst:GetAttribute("DoorOpen")
+            local shut = door.inst:GetAttribute("DoorShut")
+            if open == false and shut ~= nil then door.closed = true; return end
+            if open == false then
+                local cd = tonumber(door.inst:GetAttribute("CooldownUntil")) or 0
+                if cd > ServerNow() then door.closed = true; return end
+            end
+            task.wait(0.4)
+        end
+        door.closed = true
+    end)
+end
+
+--=====================================================================
+-- 18. EVENTOS — fluxos + tabela com TODOS os eventos
+--=====================================================================
+function PortalPos()
+    local now = os.clock()
+    if HS.portalCache and HS.portalCache.Parent and now - HS.portalCacheAt < 1 then return HS.portalCache end
+    HS.portalCacheAt = now
+    local root = GetRoot(); if not root then return nil end
+    local best, bd = nil, math.huge
+    for _, c in ipairs(Workspace:GetDescendants()) do
+        if c.Name == "comm" and c:IsA("BasePart") then
+            local d = (c.Position - root.Position).Magnitude
+            if d < bd then best, bd = c, d end
+        end
+    end
+    HS.portalCache = best
+    return best
+end
+function EnterPortal(part)
+    local root = GetRoot(); if not root or not part then return end
+    HS.mode = "INDO AO PORTAL"
+    local t0 = os.clock()
+    while os.clock() - t0 < CFG.PortalWait and not HS.domain and HalloweenDoors and HellfirePortal and part.Parent do
+        local r = GetRoot(); if not r then break end
+        Go(part.Position + Vector3.new(0,2,0), 3, 6, function() return not HalloweenDoors end)
+        r = GetRoot()
+        if r and firetouchinterest then
+            pcall(function() firetouchinterest(r, part, 0) end)
+            pcall(function() firetouchinterest(r, part, 1) end)
+        end
+        HS.mode = "PORTAL HELLFIRE"; task.wait(0.1)
+    end
+    Halt()
+end
+
+-- ---- Fluxos de evento ----
+function staticFlow(inst) task.wait(2.5); FireEvent(AcceptRewards and "AcceptReward" or "DeclineReward") end
+function genericNpcFlow(inst)
+    local pos = GetPart(inst); pos = pos and pos.Position or (GetRoot() and GetRoot().Position) or Vector3.zero
+    task.wait(2); FireEvent("AcceptReward"); task.wait(1)
+    local t0 = os.clock()
+    while os.clock() - t0 < 60 do
+        local best
+        local folder = Workspace:FindFirstChild("Enemies")
+        if folder then
+            local root = GetRoot()
+            local bd = math.huge
+            for _, m in ipairs(folder:GetChildren()) do
+                if m:IsA("Model") and IsAliveModel(m) then
+                    local p = GetPart(m)
+                    if p and (p.Position - pos).Magnitude <= 200 then
+                        local d = (p.Position - root.Position).Magnitude
+                        if d < bd then best, bd = m, d end
+                    end
+                end
+            end
+        end
+        if not best then break end
+        FightOrbit(best)
+    end
+    Halt()
+end
+function gravediggerFlow(inst)
+    local pos = GetPart(inst); pos = pos and pos.Position or Vector3.zero
+    task.wait(2); FireEvent("Ready"); task.wait(4); FireEvent("Choose", math.random(1,4)); task.wait(3)
+    local t0 = os.clock()
+    while os.clock() - t0 < 60 do
+        local best
+        local folder = Workspace:FindFirstChild("Enemies")
+        if folder then
+            local root = GetRoot(); local bd = math.huge
+            for _, m in ipairs(folder:GetChildren()) do
+                if m:IsA("Model") and IsAliveModel(m) then
+                    local p = GetPart(m)
+                    if p and (p.Position - pos).Magnitude <= 200 then
+                        local d = (p.Position - root.Position).Magnitude
+                        if d < bd then best, bd = m, d end
+                    end
+                end
+            end
+        end
+        if not best then break end
+        FightOrbit(best)
+    end
+    Halt()
+end
+function sweetRideFlow(inst)
+    local id = inst and inst:GetAttribute("EventId")
+    local folder = id and ReplicatedStorage:FindFirstChild(tostring(id))
+    local remote = folder and folder:FindFirstChild("SweetRide")
+    if remote and remote:IsA("RemoteEvent") then
+        task.wait(1.5)
+        pcall(function() remote:FireServer("Rob") end)
+        task.wait(4)
+    else
+        task.wait(1.5); FireEvent("Rob"); task.wait(4)
+    end
+    local pos = GetPart(inst); pos = pos and pos.Position or Vector3.zero
+    local t0 = os.clock()
+    while os.clock() - t0 < 60 do
+        local best
+        local folder2 = Workspace:FindFirstChild("Enemies")
+        if folder2 then
+            local root = GetRoot(); local bd = math.huge
+            for _, m in ipairs(folder2:GetChildren()) do
+                if m:IsA("Model") and IsAliveModel(m) then
+                    local p = GetPart(m)
+                    if p and (p.Position - pos).Magnitude <= 200 then
+                        local d = (p.Position - root.Position).Magnitude
+                        if d < bd then best, bd = m, d end
+                    end
+                end
+            end
+        end
+        if not best then break end
+        FightOrbit(best)
+    end
+    Halt()
+end
+function cardCall(req)
+    local rf = NetFunction("ConcentrationGame"); if not rf then return nil end
+    local ok, res = pcall(function() return rf:InvokeServer(req) end)
+    return ok and res or nil
+end
+function cardGame()
+    for _ = 1, 3 do
+        local res = cardCall({ Type = "Start" })
+        if res and res.Type == "Started" then
+            local gameId, board = res.GameId, res.Board
+            local known, pending, wait = {}, nil, 0
+            local limit = os.clock() + 600
+            while board and os.clock() < limit do
+                for i, c in pairs(board.Cells) do if c.Id and c.State ~= "Hidden" then known[i] = c.Id end end
+                if os.clock() < wait then task.wait(0.1) else
+                    local hidden = {}
+                    for i, c in pairs(board.Cells) do if c.State == "Hidden" then table.insert(hidden, i) end end
+                    if #hidden == 0 then task.wait(0.2) else
+                        local pick
+                        if pending and known[pending] then
+                            for _, i in ipairs(hidden) do
+                                if i ~= pending and known[i] == known[pending] then pick = i; break end
+                            end
+                        end
+                        if not pick then pick = hidden[math.random(#hidden)] end
+                        local r = cardCall({ Type = "Flip", GameId = gameId, CellIndex = pick })
+                        if not r then task.wait(0.5)
+                        elseif r.Type == "Flipped" then
+                            board = r.Board or board
+                            if r.Result == "Matched" then pending = nil
+                            elseif r.Result == "Mismatched" then pending, wait = nil, os.clock() + 2.3
+                            else pending = pick end
+                        elseif r.Type == "Completed" then HS.tally.cards += 1; return true
+                        elseif r.Type == "Failed" then break end
+                    end
+                end
+            end
+            cardCall({ Type = "Quit", GameId = gameId })
+        end
+        task.wait(0.5)
+    end
+    return false
+end
+function tarotFlow(inst) task.wait(2); FireEvent("Read"); task.wait(2); cardGame(); task.wait(1); FireEvent("Done") end
+function freeRollFlow(inst) task.wait(2); FireEvent("Roll"); task.wait(6.5); FireEvent("Revealed"); task.wait(3); FireEvent("Done") end
+function ghostFlow(inst) HS.ghostUntil = os.clock() + CFG.CandyWindow; task.wait(1) end
+function fruitDealerFlow(inst) task.wait(2); FireEvent("Rob"); task.wait(3); FireEvent("Beg"); task.wait(2); FireEvent("Done") end
+function zeroFlow(inst) task.wait(1.5); FireEvent("Accept"); task.wait(2); FireEvent("AcceptReward") end
+function zeroSlapFlow(inst) task.wait(2); FireEvent("AcceptReward") end
+
+-- ============================================================
+-- TABELA DE TODOS OS EVENTOS
+-- ============================================================
+EVENT_FLOWS = {
+    -- Combate
+    ["Megalo"]                = genericNpcFlow,
+    ["Red Rip"]               = genericNpcFlow,
+    ["Skeleton"]              = genericNpcFlow,
+    ["Vampire"]               = genericNpcFlow,
+    ["Gorilla King"]          = genericNpcFlow,
+    ["Yeti Room"]             = genericNpcFlow,
+    ["rip_indra"]             = genericNpcFlow,
+    ["Skeleton Attack"]       = genericNpcFlow,
+    ["Werewolf Fight"]        = genericNpcFlow,
+    ["Skeleton Dance"]        = genericNpcFlow,
+
+    -- Interativos
+    ["Gravedigger"]           = gravediggerFlow,
+    ["Sweet Ride"]            = sweetRideFlow,
+    ["Tarot"]                 = tarotFlow,
+    ["Ghost Chase"]           = ghostFlow,
+    ["One Free Roll"]         = freeRollFlow,
+    ["Fruit Dealer"]          = fruitDealerFlow,
+    ["Cute Zer0"]             = zeroFlow,
+    ["Zer0 Slap"]             = zeroSlapFlow,
+
+    -- Estáticos (aceita recompensa)
+    ["Dog House"]             = staticFlow,
+    ["Dragon Hunter"]         = staticFlow,
+    ["Ancient Monk"]          = staticFlow,
+    ["Boat Dealer"]           = staticFlow,
+    ["Barista Cousin"]        = staticFlow,
+    ["Rich Man"]              = staticFlow,
+    ["Shipwright"]            = staticFlow,
+    ["Dough King"]            = staticFlow,
+    ["Oni Celestial"]         = staticFlow,
+    ["Plastic Fruits"]        = staticFlow,
+    ["Stone Mygame"]          = staticFlow,
+    ["Shafi"]                 = staticFlow,
+    ["Uzoth"]                 = staticFlow,
+    ["Mysterious Scientist"]  = staticFlow,
+    ["Awakenings Expert"]     = staticFlow,
+    ["Bandit Quest Giver"]    = staticFlow,
+    ["Experienced Captain"]   = staticFlow,
+    ["Turtle Island Encounter"] = staticFlow,
+    ["parlus Scam"]           = staticFlow,
+    ["Zarania Teleport"]      = staticFlow,
+}
+
+function StartEventFlow(evName, inst)
+    if HS.busy then return end
+    local fn = EVENT_FLOWS[evName] or staticFlow
+    HS.busy, HS.eventName = true, evName or "evento"
+    task.spawn(function()
+        local ok, err = pcall(fn, inst)
+        if not ok then
+            HS.lastError = tostring(err)
+            warn("[PH] evento: " .. HS.lastError)
+        end
+        HS.target = nil; Halt()
+        HS.busy, HS.eventName = false, nil
+    end)
+end
+
+--=====================================================================
+-- 19. LISTENER HalloweenEvent
+--=====================================================================
+function ListenHalloween()
+    if HS.listening then return end
+    local ev = HalloweenRemotes(); if not ev then return end
+    HS.listening = true
+    local id = RUN_ID
+    local conn = ev.OnClientEvent:Connect(function(kind, inst, who, data)
+        if RUN_ID ~= id or Destroyed then return end
+        HS.halloweenAt = os.clock()
+        if kind == "DoorOpened" then
+            local evName = type(data) == "table" and data.Event or nil
+            local isBoss = (type(data) == "table" and data.Boss == true) or EventKind(evName) == "boss"
+            if who == Player then
+                local door = { inst = inst, event = evName, boss = isBoss, at = os.clock(), accepted = false, done = false, closed = false }
+                HS.door = door
+                TrackDoorClose(door)
+                if isBoss then HS.tally.bosses += 1
+                else StartEventFlow(evName, inst) end
+            end
+            if isBoss then HS.portalDoor, HS.portalAt = inst, os.clock() end
+        elseif kind == "HellfireBossDeath" then
+            HS.tally.bossKills += 1
+        elseif kind == "HellfireBossExit" then
+            HS.domain, HS.door = nil, nil
+        elseif kind == "BossTeleportSound" then
+            if os.clock() - HS.portalAt < 90 then
+                HS.domain, HS.lastFight = { at = os.clock() }, os.clock()
+                if HS.door and HS.door.boss then HS.door.done = true end
+            end
+        elseif kind == "PromptEventTeleport" then
+            if AcceptTeleport then task.delay(1, function() FireEvent("AcceptEventTeleport") end) end
+        elseif kind == "PromptEventReturn" then
+            task.delay(1, function() FireEvent("AcceptTeleportReturn") end)
+        elseif kind == "DapperJackCard" then
+            if CollectCards and typeof(inst) == "Vector3" then
+                table.insert(HS.cardList, { pos = inst, at = os.clock() })
+            end
+        elseif kind == "EventFinished" then
+            if HS.door and HS.door.inst == inst then HS.door.done = true end
+        end
+    end)
+    table.insert(CONNS, conn)
+end
+
+--=====================================================================
+-- 20. BOSS DAPPER JACK
+--=====================================================================
+function DapperJackRun(boss)
+    local root = GetRoot(); local bp = GetPart(boss)
+    if not root or not bp then return false end
+    if (bp.Position - root.Position).Magnitude <= CFG.TargetSearch then return false end
+    local gw, bd = nil, math.huge
+    for _, p in ipairs(CollectionService:GetTagged("DapperJackGateway")) do
+        if p:IsA("BasePart") and p:IsDescendantOf(Workspace) then
+            local d = (p.Position - root.Position).Magnitude
+            if d < bd then gw, bd = p, d end
+        end
+    end
+    if not gw then return false end
+    HS.mode = "PORTAL DAPPER JACK"
+    if GoAuto(gw.Position + Vector3.new(0,3,0), 4) then
+        local pr = gw:FindFirstChildWhichIsA("ProximityPrompt", true)
+        if pr and fireproximityprompt then pcall(function() fireproximityprompt(pr) end) end
+        local r = GetRoot()
+        if r and firetouchinterest then
+            pcall(function() firetouchinterest(r, gw, 0) end)
+            pcall(function() firetouchinterest(r, gw, 1) end)
+        end
+        task.wait(1)
+    end
+    return true
+end
+
+--=====================================================================
+-- 21. CANDY / CARDS / FRUTAS
+--=====================================================================
+function FindCandy(root)
+    local best, bd = nil, CFG.CandyRange
+    local now = os.clock()
+    for _, obj in ipairs(Workspace:GetChildren()) do
+        local n = string.lower(obj.Name)
+        if string.find(n, "candy", 1, true)
+           and not string.find(n, "fx", 1, true)
+           and not string.find(n, "spill", 1, true)
+           and (HS.skip[obj] or 0) < now then
+            local h = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart", true)
+            if h then
+                local d = (h.Position - root.Position).Magnitude
+                if d < bd then best, bd = { model = obj, handle = h }, d end
+            end
+        end
+    end
+    return best
+end
+function CollectCandy()
+    local root = GetRoot(); if not root then return false end
+    local c = FindCandy(root); if not c then return false end
+    HS.mode = "CANDY"; HS.note = "coletando " .. c.model.Name
+    if not GoAuto(c.handle.Position, 2) then HS.skip[c.model] = os.clock() + 20; return true end
+    local pr = c.model:FindFirstChildWhichIsA("ProximityPrompt", true)
+    if pr and fireproximityprompt then pcall(function() fireproximityprompt(pr) end) end
+    local r = GetRoot()
+    if r and firetouchinterest then
+        pcall(function() firetouchinterest(r, c.handle, 0) end)
+        pcall(function() firetouchinterest(r, c.handle, 1) end)
+    end
+    task.wait(0.25)
+    if c.handle:IsDescendantOf(Workspace) then HS.skip[c.model] = os.clock() + 10
+    else HS.tally.candy += 1 end
+    return true
+end
+function CollectCard()
+    local root = GetRoot(); if not root then return false end
+    local now = os.clock(); local keep = {}
+    for _, c in ipairs(HS.cardList) do if now - c.at <= 90 then table.insert(keep, c) end end
+    HS.cardList = keep
+    local best, bd = nil, math.huge
+    for _, c in ipairs(keep) do
+        local d = (c.pos - root.Position).Magnitude
+        if d < bd then best, bd = c, d end
+    end
+    if not best then return false end
+    HS.mode = "CARD DAPPER JACK"; best.at = 0
+    if not GoAuto(best.pos + Vector3.new(0,2,0), 3) then return true end
+    FireEvent("DapperJackCardClaim"); HS.tally.cards += 1
+    task.wait(0.4)
+    return true
+end
+function BringFruits()
+    local root = GetRoot(); if not root then return false end
+    local now, did = os.clock(), false
+    for _, obj in ipairs(Workspace:GetChildren()) do
+        if string.find(string.lower(obj.Name), "fruit", 1, true) and (HS.skip[obj] or 0) < now then
+            local h = obj:IsA("BasePart") and obj or obj:FindFirstChild("Handle")
+            if h and h:IsA("BasePart") and (h.Position - root.Position).Magnitude <= CFG.FruitRange then
+                h.CanCollide = false
+                h.CFrame = root.CFrame * CFrame.new(0, -4, 0)
+                if firetouchinterest then
+                    pcall(function() firetouchinterest(root, h, 0) end)
+                    pcall(function() firetouchinterest(root, h, 1) end)
+                end
+                HS.skip[obj] = now + 3
+                task.delay(0.6, function()
+                    if not h:IsDescendantOf(Workspace) then HS.tally.fruits += 1 end
+                end)
+                did = true
+            end
+        end
+    end
+    HS.mode = did and "BRING FRUTAS" or HS.mode
+    return did
+end
+function UpdStFruit()
+    local bp = Player:FindFirstChild("Backpack"); if not bp then return end
+    local commF = CommFRemote()
+    for _, it in ipairs(bp:GetChildren()) do
+        if Destroyed then break end
+        local er = it:FindFirstChild("EatRemote", true)
+        if er then
+            local par = er.Parent
+            local on = par and par:GetAttribute("OriginalName")
+            local ft = bp:FindFirstChild(it.Name)
+            if on and ft and commF then
+                pcall(function() commF:InvokeServer("StoreFruit", on, ft) end)
+            end
+        end
+    end
+end
+
+--=====================================================================
+-- 22. ESCAPE V
+--=====================================================================
+function GetPortalEye()
+    local wo = Workspace:FindFirstChild("_WorldOrigin")
+    local dim = wo and wo:FindFirstChild("VArenaDimension")
+    local p = dim and dim:FindFirstChild("PortalEye")
+    if not p then return nil end
+    if p:IsA("BasePart") then return p end
+    if p:IsA("Model") then return p.PrimaryPart or p:FindFirstChildWhichIsA("BasePart", true) end
+end
+function BuildDimensionBounds()
+    local wo = Workspace:FindFirstChild("_WorldOrigin")
+    local dim = wo and wo:FindFirstChild("VArenaDimension")
+    if not dim then return nil end
+    local portal = dim:FindFirstChild("PortalEye")
+    local mn = Vector3.new(math.huge, math.huge, math.huge)
+    local mx = Vector3.new(-math.huge, -math.huge, -math.huge)
+    local found = false
+    for _, o in ipairs(dim:GetDescendants()) do
+        if o:IsA("BasePart") and not (portal and o:IsDescendantOf(portal)) then
+            local cf, half = o.CFrame, o.Size * 0.5
+            for _, sx in ipairs({-1,1}) do for _, sy in ipairs({-1,1}) do for _, sz in ipairs({-1,1}) do
+                local p = cf:PointToWorldSpace(Vector3.new(half.X*sx, half.Y*sy, half.Z*sz))
+                mn = Vector3.new(math.min(mn.X,p.X), math.min(mn.Y,p.Y), math.min(mn.Z,p.Z))
+                mx = Vector3.new(math.max(mx.X,p.X), math.max(mx.Y,p.Y), math.max(mx.Z,p.Z))
+                found = true
+            end end end
+        end
+    end
+    if not found then return nil end
+    local m = CFG.DimensionMargin
+    return { Min = mn - Vector3.new(m,m,m), Max = mx + Vector3.new(m,m,m) }
+end
+function IsInDimensionPos(pos)
+    local now = os.clock()
+    if DimBounds == nil or now - DimBoundsAt > CFG.DimensionRefresh then
+        DimBounds = BuildDimensionBounds(); DimBoundsAt = now
+    end
+    local b = DimBounds; if not b then return false end
+    return pos.X >= b.Min.X and pos.X <= b.Max.X
+       and pos.Y >= b.Min.Y and pos.Y <= b.Max.Y
+       and pos.Z >= b.Min.Z and pos.Z <= b.Max.Z
+end
+function EscapeStep()
+    if HS.domain then return false end
+    local root = GetRoot(); if not root or not IsInDimensionPos(root.Position) then return false end
+    local portal = GetPortalEye(); if not portal then return false end
+    HS.mode = "ESCAPE V"
+    local d = FlyTo(portal.Position)
+    if d <= 5 then Halt(); root.CFrame = CFrame.new(portal.Position) end
+    return true
+end
+
+--=====================================================================
+-- 23. MAIN LOOP
+--=====================================================================
+function MainStep()
+    CloseDialogue()
+    local root = GetRoot(); if not root then HS.mode = "SEM PERSONAGEM"; return end
+    EnforceWater(root)
+    if EscapeStep() then return end
+
+    local now = os.clock()
+    if HS.domain and now - math.max(HS.domain.at, HS.lastFight) > CFG.DomainTimeout then
+        HS.domain = nil
+    end
+
+    local focus = NearestFocusTarget()
+    if focus then FightOrbit(focus); return end
+
+    local d = HS.door
+    if d and not d.done then
+        if now - d.at > CFG.DoorMax or not (d.inst and d.inst.Parent) then HS.door = nil
+        elseif d.closed or d.done then HS.door = nil
+        elseif d.boss then
+            local pt = (HalloweenDoors and HellfirePortal) and PortalPos() or nil
+            if pt then EnterPortal(pt); return end
+            if not (HalloweenDoors and HellfirePortal) or now - d.at > 15 then d.done = true
+            else HS.mode = "ESPERANDO PORTAL"; Halt(); return end
+        else
+            if not d.accepted and now - d.at > 1 then
+                d.accepted = true
+                FireEvent(AcceptRewards and "AcceptReward" or "DeclineReward")
+                d.done = true
+            end
+            CloseDialogue()
+            HS.mode = "EVENTO " .. (d.event or "?"); task.wait(0.2); return
+        end
+    end
+
+    if HS.domain then HS.mode = "DOMÍNIO"; Halt(); return end
+
+    local boss = nil
+    local folder = Workspace:FindFirstChild("Enemies")
+    if folder then
+        for _, m in ipairs(folder:GetChildren()) do
+            if m:IsA("Model") and IsDapperJack(m) and IsAliveModel(m) then boss = m; break end
+        end
+    end
+    if boss then
+        HS.bossSeen = true
+        if DapperJackAuto and DapperJackRun(boss) then return end
+    elseif HS.bossSeen then
+        HS.bossSeen = false
+        HS.candyUntil = now + CFG.CandyWindow
+    end
+
+    if CandyCollect and now < HS.candyUntil and CollectCandy() then return end
+    if CollectCards and CollectCard() then return end
+
+    if HalloweenDoors and EventOn() then
+        local spot = SeaSpot()
+        if spot and (root.Position - spot).Magnitude > 80 then
+            HS.mode = "INDO PARA AS PORTAS"
+            if GoAuto(spot, 10, function() return not HalloweenDoors or not EventOn() end) then return end
+        end
+        local list = DoorList()
+        local door = PickDoor(list, spot or root.Position)
+        if door then KnockDoor(door); return end
+        if #list == 0 and AcceptTeleport then
+            local hour = os.date("!%Y%m%d%H")
+            if HS.tpHour ~= hour then
+                HS.tpHour = hour
+                HS.mode = "TELETRANSPORTE"; Halt()
+                FireEvent("AcceptEventTeleport"); task.wait(6); return
+            end
+        end
+    end
+
+    if GodFarm then
+        FarmTick()
+        if FarmNPC or FarmPumpkin then return end
+    end
+    if AutoBringFruits and BringFruits() then return end
+
+    HS.mode = "ESPERANDO"
+    Halt()
+end
+
+--=====================================================================
+-- 24. BRING / ESP / GODFPS
+--=====================================================================
+function BringEnemy()
+    local root, enemies = GetRoot(), Workspace:FindFirstChild("Enemies")
+    if not root or not enemies then return end
+    pcall(function() if sethiddenproperty then sethiddenproperty(Player, "SimulationRadius", math.huge) end end)
+    local target = root.Position - Vector3.new(0, CFG.NPCHeight, 0)
+    local range, count = math.clamp(CFG.BringRange, 1, 300), 0
+    for _, mob in ipairs(enemies:GetChildren()) do
+        if Destroyed or count >= CFG.MaxBringMobs then break end
+        if mob:IsA("Model") and (IsSnowman(mob) or IsJack(mob)) and IsAliveModel(mob) and AnyVisible(mob) then
+            local mr = mob:FindFirstChild("HumanoidRootPart")
+            if mr and not mr:GetAttribute("Tweening") then
+                local d = (mr.Position - target).Magnitude
+                if d <= range then
+                    count += 1
+                    mr:SetAttribute("Tweening", true)
+                    if BringTweens[mr] then pcall(function() BringTweens[mr]:Cancel() end) end
+                    local tw = TweenService:Create(mr, TweenInfoBring, { CFrame = CFrame.new(target) })
+                    BringTweens[mr] = tw
+                    tw.Completed:Once(function()
+                        if mr and mr.Parent then mr:SetAttribute("Tweening", false) end
+                        BringTweens[mr] = nil
+                    end)
+                    tw:Play()
+                end
+            end
+        end
+    end
+end
+
+function CreateBillboard(part)
+    local gui = Instance.new("BillboardGui")
+    gui.Name = "PumpkinESP"; gui.Adornee = part
+    gui.Size = UDim2.fromScale(5, 1.2); gui.StudsOffset = Vector3.new(0,3,0)
+    gui.AlwaysOnTop = true; gui.MaxDistance = 3000; gui.Parent = part
+    local l = Instance.new("TextLabel")
+    l.Size = UDim2.fromScale(1,1); l.BackgroundTransparency = 1
+    l.TextStrokeTransparency = 0; l.TextStrokeColor3 = Color3.new()
+    l.Font = Enum.Font.GothamBold; l.TextScaled = true; l.Text = ""
+    l.Parent = gui
+    return { gui = gui, label = l }
+end
+function ClearESP()
+    for _, d in pairs(ESPBillboards) do pcall(function() d.gui:Destroy() end) end
+    ESPBillboards = {}
+end
+function ESPUpdate()
+    local root = GetRoot()
+    if not ShowESP or not root then ClearESP(); return end
+    local want = {}
+    local pf = Workspace:FindFirstChild("PumpkinHunt")
+    if pf then
+        for _, obj in ipairs(pf:GetChildren()) do
+            if obj.Name == "Pumpkin" and PumpkinAlive(obj) then
+                local p = GetPart(obj)
+                if p then
+                    want[obj] = { part = p, text = "Abóbora " .. math.floor((p.Position - root.Position).Magnitude), color = Color3.fromRGB(255,170,0) }
+                end
+            end
+        end
+    end
+    local ef = Workspace:FindFirstChild("Enemies")
+    if ef then
+        for _, m in ipairs(ef:GetChildren()) do
+            if m:IsA("Model") and (IsFarmNPC(m) or IsHellfireGas(m)) and IsAliveModel(m) then
+                local p, h = GetHead(m), m:FindFirstChildOfClass("Humanoid")
+                if p and h then
+                    want[m] = { part = p, text = m.Name .. " " .. math.floor(h.Health) .. " HP", color = Color3.fromRGB(255,60,60) }
+                end
+            end
+        end
+    end
+    for k, d in pairs(ESPBillboards) do
+        if not want[k] or not d.gui.Parent then
+            pcall(function() d.gui:Destroy() end); ESPBillboards[k] = nil
+        end
+    end
+    for k, w in pairs(want) do
+        local d = ESPBillboards[k]
+        if not d or not d.gui.Parent then d = CreateBillboard(w.part); ESPBillboards[k] = d end
+        d.gui.Adornee = w.part; d.gui.Parent = w.part
+        d.label.Text = w.text; d.label.TextColor3 = w.color
+    end
+end
+
+function CreateGodFPSOverlay()
+    if GodFPSGui and GodFPSGui.Parent then return end
+    local g = Instance.new("ScreenGui")
+    g.Name = "GodFPSOverlay"; g.ResetOnSpawn = false; g.IgnoreGuiInset = true
+    g.DisplayOrder = 999999; g.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    local f = Instance.new("Frame")
+    f.Size = UDim2.fromScale(1,1); f.BackgroundColor3 = Color3.new(); f.BackgroundTransparency = 1
+    f.BorderSizePixel = 0; f.Active = false; f.Parent = g
+    g.Parent = (gethui and gethui()) or game:GetService("CoreGui")
+    GodFPSGui = g
+end
+function ApplyGodFPS()
+    CreateGodFPSOverlay()
+    if GodFPSGui then
+        local f = GodFPSGui:FindFirstChildOfClass("Frame")
+        if f then f.BackgroundTransparency = 0 end
+    end
+    GodFPSOriginals = {}
+    local pf = Workspace:FindFirstChild("PumpkinHunt")
+    for _, o in ipairs(Workspace:GetDescendants()) do
+        if pf and o:IsDescendantOf(pf) then
+        elseif o:IsA("BasePart") then
+            GodFPSOriginals[o] = { Transparency = o.Transparency, LocalTransparencyModifier = o.LocalTransparencyModifier }
+            o.Transparency = 1; o.LocalTransparencyModifier = 1
+        elseif o:IsA("Decal") or o:IsA("Texture") then
+            GodFPSOriginals[o] = { Transparency = o.Transparency }; o.Transparency = 1
+        elseif o:IsA("ParticleEmitter") or o:IsA("Trail") or o:IsA("Smoke") or o:IsA("Fire")
+            or o:IsA("Sparkles") or o:IsA("Beam") or o:IsA("BillboardGui") or o:IsA("SurfaceGui") then
+            GodFPSOriginals[o] = { Enabled = o.Enabled }; o.Enabled = false
+        end
+    end
+    GodFPSOriginalLighting = {
+        GlobalShadows = Lighting.GlobalShadows, Brightness = Lighting.Brightness,
+        Ambient = Lighting.Ambient, OutdoorAmbient = Lighting.OutdoorAmbient, FogEnd = Lighting.FogEnd,
+    }
+    Lighting.GlobalShadows = false; Lighting.Brightness = 0
+    Lighting.Ambient = Color3.new(); Lighting.OutdoorAmbient = Color3.new()
+    Lighting.FogEnd = 100000
+end
+function RestoreGodFPS()
+    if GodFPSGui then
+        local f = GodFPSGui:FindFirstChildOfClass("Frame")
+        if f then f.BackgroundTransparency = 1 end
+    end
+    for o, d in pairs(GodFPSOriginals) do
+        if o and o.Parent then
+            pcall(function()
+                if d.Transparency ~= nil then o.Transparency = d.Transparency end
+                if d.LocalTransparencyModifier ~= nil then o.LocalTransparencyModifier = d.LocalTransparencyModifier end
+                if d.Enabled ~= nil then o.Enabled = d.Enabled end
+            end)
+        end
+    end
+    GodFPSOriginals = {}
+    if GodFPSOriginalLighting.GlobalShadows ~= nil then
+        Lighting.GlobalShadows = GodFPSOriginalLighting.GlobalShadows
+        Lighting.Brightness = GodFPSOriginalLighting.Brightness
+        Lighting.Ambient = GodFPSOriginalLighting.Ambient
+        Lighting.OutdoorAmbient = GodFPSOriginalLighting.OutdoorAmbient
+        Lighting.FogEnd = GodFPSOriginalLighting.FogEnd
+    end
+    GodFPSOriginalLighting = {}
+end
+
+--=====================================================================
+-- 25. CLEANUP
+--=====================================================================
+FrameCount, FPSNow = 0, 0
+FruitScan, StatusRows = {}, {}
+table.insert(CONNS, RunService.Heartbeat:Connect(function() FrameCount += 1 end))
+
+function FormatDur(sec)
+    sec = math.max(0, math.floor(sec))
+    return string.format("%02d:%02d:%02d", sec // 3600, (sec % 3600) // 60, sec % 60)
+end
+function EventClock()
+    local t = os.date("!*t")
+    local secNow = t.min * 60 + t.sec
+    local endAt = CFG.EventMinutes * 60
+    if secNow < endAt then return true, endAt - secNow end
+    return false, 3600 - secNow
+end
+function PingMs()
+    local ok, p = pcall(function() return Player:GetNetworkPing() end)
+    if ok and type(p) == "number" then return math.floor(p * 1000) end
+    return -1
+end
+function ScanFruits()
+    local root = GetRoot(); local out = {}
+    for _, obj in ipairs(Workspace:GetChildren()) do
+        if string.find(string.lower(obj.Name), "fruit", 1, true) then
+            local h = obj:IsA("BasePart") and obj or obj:FindFirstChild("Handle")
+            if h and h:IsA("BasePart") then
+                local d = root and math.floor((h.Position - root.Position).Magnitude) or -1
+                table.insert(out, { name = obj.Name, dist = d })
+            end
+        end
+    end
+    table.sort(out, function(a,b) return a.dist < b.dist end)
+    return out
+end
+function CountFarmTargets()
+    local n = 0; local f = Workspace:FindFirstChild("Enemies")
+    if f then for _, m in ipairs(f:GetChildren()) do
+        if m:IsA("Model") and IsFarmNPC(m) and IsAliveModel(m) then n += 1 end
+    end end
+    return n
+end
+function CountPumpkins()
+    local n = 0; local f = Workspace:FindFirstChild("PumpkinHunt")
+    if f then for _, o in ipairs(f:GetChildren()) do
+        if o.Name == "Pumpkin" and PumpkinAlive(o) then n += 1 end
+    end end
+    return n
+end
+function CountDoorsReady()
+    local n, now, sn = 0, os.clock(), ServerNow()
+    for _, d in ipairs(DoorList()) do
+        if not d.open and d.cool <= sn and d.skip <= now then n += 1 end
+    end
+    return n
+end
+function StatusRow(fn)
+    local l = StatusTab:AddLabel("...")
+    table.insert(StatusRows, { label = l, fn = fn })
+end
+function StatusText()
+    return string.format("%s · alvos %d · bosses %d · abóboras %d · portas %d · frutas %d · %s",
+        HS.mode, HS.tally.kills, HS.tally.bosses, HS.tally.pumpkins, HS.tally.doors, HS.tally.fruits, HS.note)
+end
+function Cleanup()
+    if Destroyed then return end
+    SaveStates(); Destroyed = true
+    GodFarm = false; HalloweenDoors = false; DapperJackAuto = false; CandyCollect = false
+    if GodFPS then RestoreGodFPS(); GodFPS = false end
+    if GodFPSGui then pcall(function() GodFPSGui:Destroy() end); GodFPSGui = nil end
+    Release(); ClearESP()
+    for r, tw in pairs(BringTweens) do
+        pcall(function() tw:Cancel() end)
+        if r and r.Parent then r:SetAttribute("Tweening", false) end
+    end
+    BringTweens = {}
+    for _, c in ipairs(CONNS) do pcall(function() c:Disconnect() end) end
+    CONNS = {}
+    print("[Pumpkin Hunt] Sistema encerrado.")
+end
+Env.PumpkinHuntCleanup = Cleanup
+
+--=====================================================================
+-- 26. CONEXÕES GLOBAIS
+--=====================================================================
+BodyStepConn = RunService.Stepped:Connect(function()
+    if Destroyed or not NoclipOn then return end
+    local char = Player.Character; if not char then return end
+    if char ~= CharCacheChar or os.clock() - CharCacheAt > 0.5 then
+        CharCacheChar, CharCacheAt = char, os.clock()
+        CharCache = {}
+        for _, d in ipairs(char:GetDescendants()) do
+            if d:IsA("BasePart") then table.insert(CharCache, d) end
+        end
+    end
+    for _, p in ipairs(CharCache) do
+        if p.Parent then
+            if SavedCollide[p] == nil then SavedCollide[p] = p.CanCollide end
+            p.CanCollide = false
+        end
+    end
+end)
+table.insert(CONNS, BodyStepConn)
+
+table.insert(CONNS, Player.Idled:Connect(function()
+    if Destroyed then return end
+    pcall(function() VirtualUser:CaptureController(); VirtualUser:ClickButton2(Vector2.new(0,0)) end)
+end))
+
+table.insert(CONNS, Player.CharacterAdded:Connect(function()
+    DestroyPhysics(); SavedCollide = {}
+    HS.door = nil; HS.target = nil; HS.domain = nil
+    FarmNPC = nil; FarmPumpkin = nil
+    DimBounds = nil; LastEquip = 0
+end))
+
+table.insert(CONNS, Player.OnTeleport:Connect(function(state)
+    if Destroyed then return end
+    if state == Enum.TeleportState.Started then SaveStates() end
+end))
+
+--=====================================================================
+-- 27. LOOPS EM PARALELO
+--=====================================================================
+task.spawn(function()
+    local id = RUN_ID
+    while RUN_ID == id and not Destroyed do
+        local ok, err = pcall(MainStep)
+        if not ok then
+            HS.lastError = tostring(err)
+            warn("[Pumpkin Hunt] " .. HS.lastError)
+            task.wait(0.2)
+        end
+        RunService.Heartbeat:Wait()
+    end
+    Release()
+end)
+
+task.spawn(function()
+    local id = RUN_ID
+    while RUN_ID == id and not Destroyed do
+        ListenHalloween()
+        if HalloweenDoors then ScanDoors() end
+        task.wait(CFG.DoorRescan)
+    end
+end)
+
+task.spawn(function()
+    local id = RUN_ID
+    while RUN_ID == id and not Destroyed do
+        pcall(function()
+            local r, h = GetParts()
+            if r and h and not Player.Character:FindFirstChild("HasBuso") then
+                local cf = CommFRemote(); if cf then cf:InvokeServer("Buso") end
+            end
+        end)
+        task.wait(2)
+    end
+end)
+
+task.spawn(function()
+    local id = RUN_ID
+    while RUN_ID == id and not Destroyed do
+        if AutoRollStore then
+            local net = NetFolder()
+            local g = net and net:FindFirstChild("RF/GachaNetworkRF")
+            if g and g:IsA("RemoteFunction") then
+                pcall(function() g:InvokeServer({ Context = "Purchase", BoxName = "Halloween26Gacha" }) end)
+            end
+            pcall(UpdStFruit)
+        end
+        task.wait(5)
+    end
+end)
+
+task.spawn(function()
+    local id = RUN_ID
+    while RUN_ID == id and not Destroyed do
+        pcall(BringEnemy)
+        task.wait(CFG.BringInterval)
+    end
+end)
+
+task.spawn(function()
+    local id = RUN_ID
+    while RUN_ID == id and not Destroyed do
+        if not GodFPS then
+            pcall(function()
+                local map = Workspace:FindFirstChild("Map")
+                local w = map and map:FindFirstChild("WaterBase-Plane")
+                if w and w:IsA("BasePart") then w.Size = CFG.WaterSize end
+            end)
+        end
+        task.wait(1)
+    end
+end)
+
+task.spawn(function()
+    local id = RUN_ID
+    while RUN_ID == id and not Destroyed do
+        pcall(ESPUpdate)
+        task.wait(0.3)
+    end
+end)
+
+--=====================================================================
+-- 28. UI (GodLib)
+--=====================================================================
+Window = GodLib:CreateWindow({
+    Title = "Pumpkin Hunt", SubTitle = "PREMIUM",
+    Size = UDim2.fromOffset(400, 300),
+    MinimizeKey = Enum.KeyCode.RightShift, AutoBackground = true,
+})
+StatusTab = Window:AddTab({ Title = "Status",    Icon = "info" })
+Main      = Window:AddTab({ Title = "Principal", Icon = "home" })
+Combat    = Window:AddTab({ Title = "Combate",   Icon = "swords" })
+Halloween = Window:AddTab({ Title = "Halloween", Icon = "ghost" })
+
+--=====================================================================
+-- 29. STATUS (labels dinâmicos)
+--=====================================================================
+StatusTab:AddSection("HORÁRIO")
+StatusRow(function() return "UTC: " .. os.date("!%H:%M:%S") .. " · Brasília: " .. os.date("!%H:%M:%S", os.time() - 3*3600) end)
+StatusRow(function()
+    local on, s = EventClock()
+    if on then return "Evento: ATIVO · termina em " .. FormatDur(s) end
+    return "Evento: fora · começa em " .. FormatDur(s)
+end)
+StatusRow(function() return string.format("Janela: xx:00 até xx:%02d (UTC)", CFG.EventMinutes) end)
+StatusRow(function() return "Sessão: " .. FormatDur(os.time() - HS.startedAt) end)
+
+StatusTab:AddSection("SERVIDOR")
+StatusRow(function()
+    local sea = SEA_OF_PLACE[game.PlaceId]
+    return "Sea: " .. (sea and tostring(sea) or "?") .. " · Place: " .. tostring(game.PlaceId)
+end)
+StatusRow(function() return "Ping: " .. PingMs() .. " ms · FPS: " .. FPSNow end)
+StatusRow(function()
+    local r = GetRoot()
+    if not r then return "Personagem: morto ou carregando" end
+    local p = r.Position
+    return string.format("Vida: %d%% · Pos: %d,%d,%d", math.floor(HealthPct()*100), math.floor(p.X), math.floor(p.Y), math.floor(p.Z))
+end)
+StatusRow(function()
+    local r = GetRoot()
+    return "Dimensão: " .. ((r and IsInDimensionPos(r.Position)) and "dentro" or "fora")
+end)
+StatusRow(function() return "Modo: " .. HS.mode end)
+StatusRow(function() return "Alvo: " .. (HS.target and HS.target.Name or (FarmNPC and FarmNPC.Name) or (FarmPumpkin and "Pumpkin") or "—") end)
+StatusRow(function() return "Evento em curso: " .. (HS.busy and (HS.eventName or "?") or "—") end)
+StatusRow(function() return "Nota: " .. HS.note end)
+
+StatusTab:AddSection("ALVOS E PORTAS")
+StatusRow(function() return "NPCs farm vivos: " .. CountFarmTargets() .. " · Abóboras vivas: " .. CountPumpkins() end)
+StatusRow(function() return "Portas no mapa: " .. #DoorList() .. " · prontas: " .. CountDoorsReady() end)
+StatusRow(function()
+    local p = PortalPos()
+    return "Portal Hellfire: " .. (p and "achado" or "não") .. " · Domínio: " .. (HS.domain and "sim" or "não")
+end)
+StatusRow(function() return "Kills: " .. HS.tally.kills .. " · Bosses: " .. HS.tally.bosses .. " · Portas: " .. HS.tally.doors end)
+StatusRow(function() return "Abóboras quebradas: " .. HS.tally.pumpkins .. " · Raras: " .. HS.tally.rare end)
+StatusRow(function()
+    local f = Workspace:FindFirstChild("Enemies"); local n, enr = 0, 0
+    if f then for _, m in ipairs(f:GetChildren()) do
+        if IsDapperJack(m) and IsAliveModel(m) then n += 1; if m:GetAttribute("DapperJackEnraged") then enr += 1 end end
+    end end
+    return "Dapper Jack vivo: " .. n .. " · enraged: " .. enr
+end)
+StatusRow(function() return "Cards pendentes: " .. #HS.cardList .. " · coletados: " .. HS.tally.cards end)
+StatusRow(function() return "Candy: " .. HS.tally.candy .. " · janela: " .. math.max(0, math.floor(HS.candyUntil - os.clock())) .. "s" end)
+
+StatusTab:AddSection("FRUTAS")
+StatusRow(function() return "Spawnadas: " .. #FruitScan .. " · Coletadas: " .. HS.tally.fruits end)
+for i = 1, 6 do
+    local idx = i
+    StatusRow(function()
+        local f = FruitScan[idx]
+        if f then return idx .. ". " .. f.name .. " · " .. f.dist .. " studs" end
+        return idx .. ". -"
+    end)
+end
+
+StatusTab:AddSection("SCRIPT")
+StatusRow(function() return "Erro: " .. (HS.lastError or "—") end)
+
+--=====================================================================
+-- UI — Painel
+--=====================================================================
+Main:AddSection("FARM")
+Main:AddToggle("GodFarm", {
+    Title = "God Farm", Description = "Snowman, Jack o' Lantern e abóboras (troca instantânea)",
+    Icon = "plane", Default = GodFarm,
+    Callback = function(v) GodFarm = v; if v then EnsureTool() end; SaveStates() end,
+})
+Main:AddDropdown("ToolType", {
+    Title = "Tipo de arma", Values = { "Melee", "Sword" },
+    Default = SelectedToolType, Icon = "swords",
+    Callback = function(v) SelectedToolType = v; LastEquip = 0; SaveStates() end,
+})
+Main:AddSection("FRUTAS E GACHA")
+Main:AddToggle("AutoBringFruits", {
+    Title = "Bring Fruits", Default = AutoBringFruits, Icon = "apple",
+    Callback = function(v) AutoBringFruits = v; SaveStates() end,
+})
+Main:AddToggle("AutoRollStore", {
+    Title = "Auto Roll + Store", Default = AutoRollStore, Icon = "gift",
+    Callback = function(v) AutoRollStore = v; SaveStates() end,
+})
+Main:AddSection("VISUAL")
+Main:AddToggle("ShowESP", {
+    Title = "Mostrar Distâncias", Default = ShowESP, Icon = "eye",
+    Callback = function(v) ShowESP = v; if not v then ClearESP() end; SaveStates() end,
+})
+Main:AddToggle("GodFPS", {
+    Title = "God FPS", Default = false, Icon = "flame",
+    Callback = function(v) GodFPS = v; if v then ApplyGodFPS() else RestoreGodFPS() end; SaveStates() end,
+})
+
+Combat:AddSection("ATAQUE")
+Combat:AddToggle("FastAttack", {
+    Title = "Fast Attack", Default = FastAttack, Icon = "crosshair",
+    Callback = function(v) FastAttack = v; SaveStates() end,
+})
+Combat:AddDropdown("OrbitMode", {
+    Title = "Órbita", Values = { "1 Spin", "2 Divine", "3 Star", "4 Top" },
+    Default = ({ "1 Spin","2 Divine","3 Star","4 Top" })[OrbitMode], Icon = "target",
+    Callback = function(v) OrbitMode = tonumber(string.match(tostring(v),"^(%d)")) or 1; SaveStates() end,
+})
+Combat:AddSlider("EnemyTimeout", {
+    Title = "Tempo máx por alvo (s)", Min = 5, Max = 60, Default = CFG.EnemyTimeout, Icon = "timer",
+    Callback = function(v) CFG.EnemyTimeout = v; SaveStates() end,
+})
+
+Halloween:AddSection("TRICK OR TREAT — TODAS AS PORTAS")
+Halloween:AddToggle("HalloweenDoors", {
+    Title = "Knock Doors (todas)", Description = "Bate em todas as portas do mapa · prompt + InvokeServer",
+    Icon = "map", Default = HalloweenDoors,
+    Callback = function(v) HalloweenDoors = v; if v then ScanDoors() end; SaveStates() end,
+})
+Halloween:AddToggle("AcceptRewards", {
+    Title = "Aceitar recompensa", Default = AcceptRewards, Icon = "gift",
+    Callback = function(v) AcceptRewards = v; SaveStates() end,
+})
+Halloween:AddToggle("AcceptTeleport", {
+    Title = "Aceitar teleporte do evento", Default = AcceptTeleport, Icon = "map",
+    Callback = function(v) AcceptTeleport = v; SaveStates() end,
+})
+Halloween:AddToggle("HellfirePortal", {
+    Title = "Entrar no portal Hellfire", Default = HellfirePortal, Icon = "skull",
+    Callback = function(v) HellfirePortal = v; SaveStates() end,
+})
+
+Halloween:AddSection("BOSS DAPPER JACK")
+Halloween:AddToggle("DapperJackAuto", {
+    Title = "Ir ao Dapper Jack", Default = DapperJackAuto, Icon = "skull",
+    Callback = function(v) DapperJackAuto = v; SaveStates() end,
+})
+Halloween:AddToggle("CollectCards", {
+    Title = "Pegar cards", Default = CollectCards, Icon = "gift",
+    Callback = function(v) CollectCards = v; SaveStates() end,
+})
+Halloween:AddToggle("CandyCollect", {
+    Title = "Coletar candy no chão", Default = CandyCollect, Icon = "star",
+    Callback = function(v) CandyCollect = v; SaveStates() end,
+})
+
+Halloween:AddSection("ABÓBORAS")
+Halloween:AddToggle("HalloweenRareFirst", {
+    Title = "Priorizar raras", Default = HalloweenRareFirst, Icon = "star",
+    Callback = function(v) HalloweenRareFirst = v; SaveStates() end,
+})
+Halloween:AddToggle("SkipOthersPumpkins", {
+    Title = "Pular abóboras de outros", Default = SkipOthersPumpkins, Icon = "star",
+    Callback = function(v) SkipOthersPumpkins = v; SaveStates() end,
+})
+
+Halloween:AddSection("EVENTO")
+Halloween:AddSlider("EventMinutes", {
+    Title = "Minutos do evento (UTC)", Min = 1, Max = 15, Default = CFG.EventMinutes, Icon = "timer",
+    Callback = function(v) CFG.EventMinutes = v; SaveStates() end,
+})
+Halloween:AddButton("Status", {
+    Title = "Resumo", ButtonTitle = "Ver", Icon = "info",
+    Callback = function() GodLib:NotifySuccess("Pumpkin Hunt", StatusText()) end,
+})
+
+-- loop de refresh dos labels
+task.spawn(function()
+    local id = RUN_ID
+    while RUN_ID == id and not Destroyed do
+        FruitScan = ScanFruits()
+        FPSNow = math.floor(FrameCount * 2); FrameCount = 0
+        for _, row in ipairs(StatusRows) do
+            local ok, txt = pcall(row.fn)
+            row.label.Text = ok and txt or "erro"
+        end
+        task.wait(0.5)
+    end
+end)
+
+-- CANDY CORN COUNTER
+
+local Players = game:GetService("Players")
+local RS = game:GetService("ReplicatedStorage")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+local old = playerGui:FindFirstChild("CandyCornCounter")
+if old then old:Destroy() end
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "CandyCornCounter"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.Parent = playerGui
+
+local icon = Instance.new("ImageLabel")
+icon.Name = "CandyIcon"
+icon.Size = UDim2.fromOffset(30, 30)
+icon.Position = UDim2.new(0.5, -43, 0, 12)
+icon.BackgroundTransparency = 1
+icon.Image = "rbxassetid://84254196344428"
+icon.Parent = gui
+
+local label = Instance.new("TextLabel")
+label.Name = "CandyAmount"
+label.Size = UDim2.fromOffset(100, 30)
+label.Position = UDim2.new(0.5, -8, 0, 12)
+label.BackgroundTransparency = 1
+label.Text = "..."
+label.TextColor3 = Color3.fromRGB(255, 255, 255)
+label.TextSize = 18
+label.Font = Enum.Font.GothamBold
+label.TextXAlignment = Enum.TextXAlignment.Left
+label.Parent = gui
+
+local function getCandyCorn()
+    local net = RS:WaitForChild("Modules"):WaitForChild("Net")
+    local remote = net:FindFirstChild("RF/GetAllItemValues")
+
+    if not remote then return nil end
+
+    local success, items = pcall(function()
+        return remote:InvokeServer()
+    end)
+
+    if not success or type(items) ~= "table" then
+        return nil
+    end
+
+    local total = 0
+
+    for _, item in pairs(items) do
+        if type(item) == "table"
+            and item.Key == "Quantity"
+            and tonumber(item.ItemId) == 832 then
+
+            total += tonumber(item.Value) or 0
+        end
+    end
+
+    return total
+end
+
+task.spawn(function()
+    while gui.Parent do
+        local amount = getCandyCorn()
+
+        label.Text = amount ~= nil
+            and tostring(amount)
+            or "--"
+
+        task.wait(1)
+    end
+end)
+
+GodLib:NotifySuccess("Pumpkin Hunt Premium", "Pumpkin Hunt Pronto Para Molestar Sapão🐸🎃"
